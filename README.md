@@ -291,8 +291,18 @@ The server detects the file on boot and guards every endpoint except `POST /api/
 
 Every API endpoint is limited to 600 requests per minute per signed-in user (or per client IP when
 signed out); login is limited to 10 attempts per minute per IP. Tune the general limit with
-`RATE_LIMIT_MAX` in `.env`. Behind a reverse proxy, set `TRUST_PROXY=true` (or the proxy's
-comma-separated addresses) so limits apply to real clients instead of all traffic sharing the proxy's IP.
+`RATE_LIMIT_MAX` in `.env`.
+
+Behind a reverse proxy, set `TRUST_PROXY` to the proxy's address or CIDR so limits apply to real
+clients instead of all traffic sharing the proxy's IP:
+
+```bash
+TRUST_PROXY=10.0.0.5                  # or 172.16.0.0/12, or several: 10.0.0.5,10.0.0.6
+```
+
+Avoid `TRUST_PROXY=true`. It trusts `X-Forwarded-For` from every client, so anyone can spoof
+their IP and dodge the login limit (the server warns at boot). Hop counts such as `TRUST_PROXY=1`
+are rejected at startup: Fastify can't verify the peer from a count, so it would trust nothing.
 
 ---
 

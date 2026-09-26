@@ -58,7 +58,9 @@ export class SearchService {
 
     private persistencePath: string | null = null;
     private persistTimeout: NodeJS.Timeout | null = null;
-    private persistInFlight: Promise<void> | null = null;
+    // Every index write is chained here: at most one runs at a time, in order,
+    // so an older write can't finish after (and overwrite) a newer one.
+    private persistChain: Promise<void> = Promise.resolve();
     private readonly debounceMs = 500;
 
     constructor() {
@@ -146,33 +148,35 @@ export class SearchService {
 
         this.persistTimeout = setTimeout(() => {
             this.persistTimeout = null;
-            this.persistNow();
+            void this.persist();
         }, this.debounceMs);
     }
 
-    private persistNow(): Promise<void> {
-        if (!this.persistencePath) return Promise.resolve();
-        const write = this.exportIndex(this.persistencePath)
-            .catch(err => console.error('[SearchService] Failed to persist index: ', err))
-            .finally(() => {
-                if (this.persistInFlight === write) this.persistInFlight = null;
-            });
-        this.persistInFlight = write;
-        return write;
+    /**
+     * Queue a write of the index to the persistence path, after any write already
+     * queued. Resolves when this write finishes; failures are logged, not thrown.
+     */
+    public persist(): Promise<void> {
+        const filePath = this.persistencePath;
+        if (!filePath) return this.persistChain;
+        this.persistChain = this.persistChain
+            .then(() => this.exportIndex(filePath))
+            .catch(err => console.error('[SearchService] Failed to persist index: ', err));
+        return this.persistChain;
     }
 
     /**
-     * Write any debounced index change now and cancel the timer, then wait for an
-     * in-flight write. Call on shutdown so the latest index isn't lost and nothing
+     * Write any debounced index change now and cancel the timer, then wait for every
+     * queued write. Call on shutdown so the latest index isn't lost and nothing
      * writes into the data dir afterwards.
      */
     public async flushPendingPersist(): Promise<void> {
         if (this.persistTimeout) {
             clearTimeout(this.persistTimeout);
             this.persistTimeout = null;
-            await this.persistNow();
+            void this.persist();
         }
-        if (this.persistInFlight) await this.persistInFlight;
+        await this.persistChain;
     }
 
     /**

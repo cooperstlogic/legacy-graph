@@ -1,4 +1,4 @@
-import { createServer, closeServer } from './server';
+import { createServer, closeServer, parseTrustProxy } from './server';
 
 if (!process.env.DATA_DIR) {
     console.error('[Boot] FATAL: DATA_DIR environment variable is not set. Please set DATA_DIR to the path of your data directory.');
@@ -7,23 +7,17 @@ if (!process.env.DATA_DIR) {
 const dataDir = process.env.DATA_DIR;
 const port = parseInt(process.env.PORT || '3000', 10);
 const geonamesDb = process.env.GEONAMES_DB;
-// Behind a reverse proxy, set TRUST_PROXY ("true", or the proxy's addresses/CIDRs,
-// comma-separated) so rate limits apply per real client instead of to the proxy's IP.
-const trustProxy = parseTrustProxy(process.env.TRUST_PROXY);
 const rateLimitMax = process.env.RATE_LIMIT_MAX ? parseInt(process.env.RATE_LIMIT_MAX, 10) : undefined;
-
-function parseTrustProxy(value: string | undefined): boolean | string | undefined {
-    if (value === undefined || value === '') return undefined;
-    if (value === 'true') return true;
-    if (value === 'false') return false;
-    return value;
-}
 
 async function bootstrap() {
     console.log(`[Boot] Starting LegacyGraph server...`);
     console.log(`[Boot] Data Directory: ${dataDir}`);
 
     try {
+        // Behind a reverse proxy, TRUST_PROXY (the proxy's addresses/CIDRs) makes rate
+        // limits apply per real client instead of to the proxy's IP. Parsed here so a bad
+        // value fails through the bootstrap error path with its message.
+        const trustProxy = parseTrustProxy(process.env.TRUST_PROXY);
         const server = await createServer({
             dataDir,
             port,

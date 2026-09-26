@@ -2,9 +2,9 @@
 //
 // Shared (multi-user) deployments: every API route is rate-limited, keyed by the
 // authenticated username when there is one and by client IP otherwise.
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { FastifyInstance } from 'fastify';
-import { createServer, type ServerConfig } from '../../src/server';
+import { createServer, parseTrustProxy, type ServerConfig } from '../../src/server';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
@@ -74,8 +74,8 @@ describe('API rate limiting', () => {
         expect((await s.inject({ method: 'GET', url: '/api/people', cookies: cookieFor('bob') })).statusCode).toBe(200);
     });
 
-    it('with trustProxy, keys anonymous clients by their forwarded IP rather than the proxy', async () => {
-        const s = await start({ trustProxy: true });
+    it('with trustProxy set to the proxy address, keys anonymous clients by their forwarded IP', async () => {
+        const s = await start({ trustProxy: '127.0.0.1' }); // inject() connects from 127.0.0.1
         const from = (ip: string) => ({ method: 'GET' as const, url: '/api/people', headers: { 'x-forwarded-for': ip } });
         for (let i = 0; i < MAX; i++) await s.inject(from('203.0.113.1'));
         expect((await s.inject(from('203.0.113.1'))).statusCode).toBe(429);
@@ -83,7 +83,7 @@ describe('API rate limiting', () => {
     });
 
     it('login keeps its own stricter limit per client IP', async () => {
-        const s = await start({ auth: true, trustProxy: true });
+        const s = await start({ auth: true, trustProxy: '127.0.0.1' });
         const login = (ip: string) => s.inject({
             method: 'POST', url: '/api/auth/login',
             headers: { 'x-forwarded-for': ip },
@@ -93,5 +93,45 @@ describe('API rate limiting', () => {
         expect((await login('203.0.113.1')).statusCode).toBe(429);
         // One attacker must not lock everyone else out of logging in
         expect((await login('203.0.113.2')).statusCode).toBe(401);
+    });
+
+    it('ignores X-Forwarded-For from a client that is not the trusted proxy', async () => {
+        const s = await start({ trustProxy: '10.0.0.1' });
+        // A direct client rotating a spoofed header must still share one bucket
+        const spoofed = (i: number) => s.inject({
+            method: 'GET', url: '/api/people',
+            remoteAddress: '203.0.113.9',
+            headers: { 'x-forwarded-for': `198.51.100.${i}` },
+        });
+        for (let i = 0; i < MAX; i++) expect((await spoofed(i)).statusCode).toBe(200);
+        expect((await spoofed(MAX)).statusCode).toBe(429);
+    });
+
+    it('warns at boot when trustProxy is true, since clients can then spoof their IP', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        try {
+            await start({ trustProxy: true });
+            expect(warn).toHaveBeenCalledWith(expect.stringMatching(/TRUST_PROXY=true/));
+        } finally {
+            warn.mockRestore();
+        }
+    });
+});
+
+describe('parseTrustProxy (TRUST_PROXY env)', () => {
+    it('passes proxy addresses and CIDRs through', () => {
+        expect(parseTrustProxy('10.0.0.1')).toBe('10.0.0.1');
+        expect(parseTrustProxy('10.0.0.1, 192.168.0.0/16')).toBe('10.0.0.1, 192.168.0.0/16');
+    });
+
+    it('maps true/false and treats unset or empty as unset', () => {
+        expect(parseTrustProxy('true')).toBe(true);
+        expect(parseTrustProxy('false')).toBe(false);
+        expect(parseTrustProxy('')).toBeUndefined();
+        expect(parseTrustProxy(undefined)).toBeUndefined();
+    });
+
+    it('rejects a hop count with guidance (Fastify fails closed on numeric trustProxy)', () => {
+        expect(() => parseTrustProxy('1')).toThrow(/hop count.*proxy's address/i);
     });
 });

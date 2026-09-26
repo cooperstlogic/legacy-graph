@@ -440,7 +440,7 @@ Pre-computes the "Integrated Feed" for the UI Person Detail page.
 - `POST /auth/logout`: End session.
   - _Effect_: Clears HttpOnly Cookie.
 - **Auth Guard**: All endpoints except `POST /auth/login`, `GET /system/status`, and `GET /system/hydration/stream` require a valid JWT.
-- **Rate Limiting**: LegacyGraph must work as a shared, multi-user instance, so every API endpoint is rate-limited: 600 requests per minute by default (`RATE_LIMIT_MAX`), keyed by authenticated username, or by client IP when unauthenticated. Exceeding it returns `429 { error, code: "RATE_LIMITED" }`. Static delivery under `/assets/` is exempt. Behind a reverse proxy, `TRUST_PROXY` (Fastify `trustProxy`: `true`, or the proxy's comma-separated addresses/CIDRs) must be set so the client IP is the real client rather than the proxy.
+- **Rate Limiting**: LegacyGraph must work as a shared, multi-user instance, so every API endpoint is rate-limited: 600 requests per minute by default (`RATE_LIMIT_MAX`), keyed by authenticated username, or by client IP when unauthenticated. Exceeding it returns `429 { error, code: "RATE_LIMITED" }`. Static delivery under `/assets/` is exempt. Behind a reverse proxy, `TRUST_PROXY` must be set to the proxy's comma-separated addresses/CIDRs (Fastify `trustProxy`), so the client IP is the real client rather than the proxy, and `X-Forwarded-For` from anyone else is ignored. `true` is accepted but logs a warning at boot: it trusts the header from every client, so a client can rotate a spoofed IP to get a fresh bucket per request. A hop count is rejected at boot, because Fastify fails closed on numeric `trustProxy`, which would silently key everyone by the proxy's IP.
 
 ---
 

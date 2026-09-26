@@ -39,6 +39,25 @@ export interface ServerConfig {
 
 export const DEFAULT_RATE_LIMIT = { max: 600, timeWindow: '1 minute' } as const;
 
+/**
+ * Parse the TRUST_PROXY env var: "true", "false", or the proxy's comma-separated
+ * addresses/CIDRs (recommended). Hop counts are rejected: Fastify fails closed on a
+ * numeric trustProxy (it can't verify the peer is the proxy), so rate limits would
+ * silently key every client by the proxy's IP.
+ */
+export function parseTrustProxy(value: string | undefined): ServerConfig['trustProxy'] {
+    if (value === undefined || value.trim() === '') return undefined;
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+    if (/^\d+$/.test(value.trim())) {
+        throw new Error(
+            `TRUST_PROXY=${value}: a hop count is not supported. Set it to your proxy's address `
+            + `or CIDR (e.g. TRUST_PROXY=10.0.0.5 or 172.16.0.0/12), comma-separated for several.`
+        );
+    }
+    return value;
+}
+
 export async function createServer(config: ServerConfig): Promise<FastifyInstance> {
     // Typed up front: an inline union-typed trustProxy steers inference to the HTTP/2 overload
     const options: FastifyServerOptions = {
@@ -46,6 +65,13 @@ export async function createServer(config: ServerConfig): Promise<FastifyInstanc
         trustProxy: config.trustProxy ?? false,
     };
     const server = Fastify(options);
+    if (config.trustProxy === true) {
+        console.warn(
+            '[Server] TRUST_PROXY=true trusts X-Forwarded-For from any client, so clients can spoof '
+            + 'their IP and evade per-IP rate limits. Set TRUST_PROXY to your proxy\'s address instead, '
+            + 'unless the proxy overwrites (not appends to) X-Forwarded-For and is the only way in.'
+        );
+    }
 
     await server.register(cors, { origin: true });
     await server.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } });

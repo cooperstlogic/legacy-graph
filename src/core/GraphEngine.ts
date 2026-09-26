@@ -203,9 +203,8 @@ export class GraphEngine extends EventEmitter {
             this._cacheWrittenAt = new Date().toISOString();
 
             // 5. Persist search index for next boot
-            await this.searchService.exportIndex(this.searchIndexPath).catch(err => {
-                console.warn(`[GraphEngine] Failed to export search index: ${err.message}`);
-            });
+            // Queued behind any other index write (persist() logs failures itself)
+            await this.searchService.persist();
 
             const elapsedMs = Date.now() - this._hydrationStartTime;
             this.emit('hydration:complete', {
@@ -244,9 +243,8 @@ export class GraphEngine extends EventEmitter {
                 workerResult.fromCache,
                 workerResult.parsed
             );
-            await this.searchService.exportIndex(this.searchIndexPath).catch(err => {
-                console.warn(`[GraphEngine] Failed to export search index: ${err.message}`);
-            });
+            // Queued behind any other index write (persist() logs failures itself)
+            await this.searchService.persist();
             const elapsedMs = Date.now() - this._hydrationStartTime;
             this.emit('hydration:complete', {
                 nodeCount: this.graph.order,
