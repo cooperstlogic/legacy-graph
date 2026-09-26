@@ -236,4 +236,39 @@ describe('Search Index Persistence (Phase 3.7.2)', () => {
         const mtime3 = fs.statSync(SEARCH_INDEX_PATH).mtimeMs;
         expect(mtime3).toBeGreaterThan(mtime1);
     });
+
+    it('hydrate() leaves no debounced write pending (it exports the index itself)', async () => {
+        writePersonYaml('N_A', 'Alice', 'Smith');
+        const engine = new GraphEngine(DATA_DIR);
+        await engine.hydrate();
+
+        // A leftover timer would rewrite the index ~500ms later, racing any caller
+        // that deletes or moves the data dir right after hydration.
+        fs.rmSync(SEARCH_INDEX_PATH);
+        await new Promise(r => setTimeout(r, 600));
+        expect(fs.existsSync(SEARCH_INDEX_PATH)).toBe(false);
+    });
+
+    it('close() writes a pending debounced index immediately and cancels the timer', async () => {
+        writePersonYaml('N_A', 'Alice', 'Smith');
+        const engine = new GraphEngine(DATA_DIR);
+        await engine.hydrate();
+        fs.rmSync(SEARCH_INDEX_PATH);
+
+        engine.searchService.indexPerson({
+            version: "5.1", id: "N_A", created: "2023", last_modified: "2023",
+            names: [{ first: "Alicia", last: "Smith" }], sex: "U",
+            relationships: { parents: [] }, events: [], assets: [], tags: []
+        }, "");
+        await engine.close();
+
+        // Flushed on close: shutdown must not lose the latest index
+        expect(fs.readFileSync(SEARCH_INDEX_PATH, 'utf8')).toContain('N_A');
+
+        // ...and the debounce timer is gone: nothing writes into the data dir afterwards
+        // (a late write here raced test teardown, recreating _meta mid-`rm`: ENOTEMPTY)
+        fs.rmSync(SEARCH_INDEX_PATH);
+        await new Promise(r => setTimeout(r, 600));
+        expect(fs.existsSync(SEARCH_INDEX_PATH)).toBe(false);
+    });
 });

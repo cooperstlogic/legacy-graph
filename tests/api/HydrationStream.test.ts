@@ -7,11 +7,13 @@ import bcrypt from 'bcryptjs';
 import * as fs from 'fs';
 import * as nodeFs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 
 describe('SSE Hydration Stream (Phase 3.8.3)', () => {
     let server: FastifyInstance;
     let request: ReturnType<typeof supertest>;
     const testDataDir = './tests/fixtures/data';
+    let authDataDir: string | undefined;
 
     beforeEach(async () => {
         const gitDir = path.join(testDataDir, '.git');
@@ -36,6 +38,8 @@ describe('SSE Hydration Stream (Phase 3.8.3)', () => {
 
     afterEach(async () => {
         if (server) await server.close();
+        if (authDataDir) fs.rmSync(authDataDir, { recursive: true, force: true });
+        authDataDir = undefined;
     });
 
     it('should return content-type text/event-stream', async () => {
@@ -84,8 +88,12 @@ describe('SSE Hydration Stream (Phase 3.8.3)', () => {
     });
 
     it('should be exempt from auth guard', async () => {
-        // Set up auth config
-        const authDir = path.join(testDataDir, '_meta');
+        // Own data dir: writing auth.yaml into the shared tests/fixtures/data would turn
+        // auth on for any server that Server/Assets/Stories tests boot in parallel (401s).
+        authDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hydration-auth-test-'));
+        const authDir = path.join(authDataDir, '_meta');
+        fs.mkdirSync(authDir, { recursive: true });
+        fs.mkdirSync(path.join(authDataDir, 'people'), { recursive: true });
         const hash = bcrypt.hashSync('password123', 10);
         const authYaml = `jwt_secret: "test-secret-key-that-is-at-least-32-chars-long"
 session_expiry: "24h"
@@ -94,7 +102,7 @@ users:
     password_hash: "${hash}"`;
         fs.writeFileSync(path.join(authDir, 'auth.yaml'), authYaml);
 
-        server = await createServer({ logger: false, dataDir: testDataDir });
+        server = await createServer({ logger: false, dataDir: authDataDir });
         await server.listen({ port: 0 });
         const address = server.server.address();
         const port = typeof address === 'object' && address !== null ? address.port : 3000;
@@ -103,8 +111,5 @@ users:
         // Should succeed without auth token
         const response = await request.get('/api/system/hydration/stream');
         expect(response.status).not.toBe(401);
-
-        // Clean up auth config (may already be removed by parallel test teardown)
-        try { fs.unlinkSync(path.join(authDir, 'auth.yaml')); } catch {}
     });
 });

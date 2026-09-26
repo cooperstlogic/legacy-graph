@@ -58,6 +58,7 @@ export class SearchService {
 
     private persistencePath: string | null = null;
     private persistTimeout: NodeJS.Timeout | null = null;
+    private persistInFlight: Promise<void> | null = null;
     private readonly debounceMs = 500;
 
     constructor() {
@@ -143,15 +144,35 @@ export class SearchService {
 
         if (this.persistTimeout) clearTimeout(this.persistTimeout);
 
-        this.persistTimeout = setTimeout(async () => {
-            try {
-                if (this.persistencePath) {
-                    await this.exportIndex(this.persistencePath);
-                }
-            } catch (err) {
-                console.error('[SearchService] Failed to persist index: ', err);
-            }
+        this.persistTimeout = setTimeout(() => {
+            this.persistTimeout = null;
+            this.persistNow();
         }, this.debounceMs);
+    }
+
+    private persistNow(): Promise<void> {
+        if (!this.persistencePath) return Promise.resolve();
+        const write = this.exportIndex(this.persistencePath)
+            .catch(err => console.error('[SearchService] Failed to persist index: ', err))
+            .finally(() => {
+                if (this.persistInFlight === write) this.persistInFlight = null;
+            });
+        this.persistInFlight = write;
+        return write;
+    }
+
+    /**
+     * Write any debounced index change now and cancel the timer, then wait for an
+     * in-flight write. Call on shutdown so the latest index isn't lost and nothing
+     * writes into the data dir afterwards.
+     */
+    public async flushPendingPersist(): Promise<void> {
+        if (this.persistTimeout) {
+            clearTimeout(this.persistTimeout);
+            this.persistTimeout = null;
+            await this.persistNow();
+        }
+        if (this.persistInFlight) await this.persistInFlight;
     }
 
     /**

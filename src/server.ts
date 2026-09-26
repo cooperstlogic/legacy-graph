@@ -1,4 +1,4 @@
-import Fastify, { FastifyInstance } from 'fastify';
+import Fastify, { FastifyInstance, type FastifyServerOptions } from 'fastify';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import cookie from '@fastify/cookie';
@@ -34,16 +34,18 @@ export interface ServerConfig {
     /** Per-client API rate limit (default 600 requests per minute). */
     rateLimit?: { max: number; timeWindow: string | number };
     /** Fastify `trustProxy`: set when behind a reverse proxy so `request.ip` is the real client. */
-    trustProxy?: boolean | string | number;
+    trustProxy?: FastifyServerOptions['trustProxy'];
 }
 
 export const DEFAULT_RATE_LIMIT = { max: 600, timeWindow: '1 minute' } as const;
 
 export async function createServer(config: ServerConfig): Promise<FastifyInstance> {
-    const server = Fastify({
+    // Typed up front: an inline union-typed trustProxy steers inference to the HTTP/2 overload
+    const options: FastifyServerOptions = {
         logger: config.logger ?? true,
         trustProxy: config.trustProxy ?? false,
-    });
+    };
+    const server = Fastify(options);
 
     await server.register(cors, { origin: true });
     await server.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } });
@@ -123,7 +125,7 @@ export async function createServer(config: ServerConfig): Promise<FastifyInstanc
     });
 
     server.addHook('onClose', async () => {
-        await graphEngine.stopWatcher();
+        await graphEngine.close();
         await txManager.destroy();
     });
 

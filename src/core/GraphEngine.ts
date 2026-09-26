@@ -333,11 +333,14 @@ export class GraphEngine extends EventEmitter {
         const searchImport = await this.searchService.importIndex(this.searchIndexPath).catch(() => null);
         const currentPersonIds = new Set(peopleWithMtime.map(e => e.data.id));
 
+        // Bulk indexing below passes skipPersist: hydrate() exports the index itself once
+        // done, and a leftover debounce timer would rewrite it ~500ms after hydration.
+
         // Clean up deleted people from imported index
         if (searchImport) {
             for (const oldId of searchImport.personIds) {
                 if (!currentPersonIds.has(oldId)) {
-                    this.searchService.removePerson(oldId);
+                    this.searchService.removePerson(oldId, true);
                 }
             }
         }
@@ -352,7 +355,7 @@ export class GraphEngine extends EventEmitter {
 
             // Index: if search cache loaded, only re-index changed entries; otherwise index all
             if (!searchImport || wasParsed !== false) {
-                this.searchService.indexPerson(slim, bio);
+                this.searchService.indexPerson(slim, bio, true);
             } else {
                 this.searchService.trackPerson(slim.id);
             }
@@ -362,7 +365,7 @@ export class GraphEngine extends EventEmitter {
         stories.forEach(s => {
             this.graph.addNode(s.id, { type: 'story', data: s });
             if (!searchImport) {
-                this.searchService.indexStory(s);
+                this.searchService.indexStory(s, true);
             } else {
                 this.searchService.trackStory(s.id);
             }
@@ -642,6 +645,16 @@ export class GraphEngine extends EventEmitter {
                 this.watcherEventCount = 0;
             }
         }
+    }
+
+    /**
+     * Shut down: stop the watchers and flush the debounced search-index write, so the
+     * latest index is saved and nothing writes into the data dir after this resolves.
+     * Safe to call multiple times.
+     */
+    public async close(): Promise<void> {
+        await this.stopWatcher();
+        await this.searchService.flushPendingPersist();
     }
 
     /**

@@ -291,8 +291,8 @@ The server detects the file on boot and guards every endpoint except `POST /api/
 
 Every API endpoint is limited to 600 requests per minute per signed-in user (or per client IP when
 signed out); login is limited to 10 attempts per minute per IP. Tune the general limit with
-`RATE_LIMIT_MAX` in `.env`. Behind a reverse proxy, set `TRUST_PROXY=true` (or a hop count, or the
-proxy's address) so limits apply to real clients instead of all traffic sharing the proxy's IP.
+`RATE_LIMIT_MAX` in `.env`. Behind a reverse proxy, set `TRUST_PROXY=true` (or the proxy's
+comma-separated addresses) so limits apply to real clients instead of all traffic sharing the proxy's IP.
 
 ---
 
