@@ -14,13 +14,13 @@
     "fastify",
     "graphology"
   ],
-  "homepage": "https://github.com/dylanwebster/legacy-graph#readme",
+  "homepage": "https://github.com/cooperstlogic/legacy-graph#readme",
   "bugs": {
-    "url": "https://github.com/dylanwebster/legacy-graph/issues"
+    "url": "https://github.com/cooperstlogic/legacy-graph/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dylanwebster/legacy-graph.git"
+    "url": "git+https://github.com/cooperstlogic/legacy-graph.git"
   },
   "license": "PolyForm-Noncommercial-1.0.0",
   "author": "Dylan Webster (https://github.com/dylanwebster)",

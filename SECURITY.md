@@ -10,7 +10,7 @@ security fixes.
 **Please do not open a public issue for security problems.**
 
 Report privately through GitHub:
-[**Report a vulnerability**](https://github.com/dylanwebster/legacy-graph/security/advisories/new).
+[**Report a vulnerability**](https://github.com/cooperstlogic/legacy-graph/security/advisories/new).
 This opens a draft advisory visible only to you and the maintainers.
 
 Please include:
