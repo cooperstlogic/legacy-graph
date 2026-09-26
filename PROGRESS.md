@@ -31,7 +31,13 @@
 ### Known Bugs
 
 - [ ] **API-created people lose `scrapbook_md` on their next edit** (data loss, pre-existing). `GraphEngine.loadHeavyFields()` finds the YAML via `reverseFileMap`, which is only filled at boot or when the watcher re-reads a file. When self-write dedup matches (data dir path identical to the watcher's event path — e.g. an absolute, symlink-free path on Linux), a person created via `POST /api/people` never gets an entry, so the next `PUT` rebuilds it with `scrapbook_md: ''`, and batch geocode apply skips them. Relative `DATA_DIR` (e2e) and macOS `/var` → `/private/var` paths mask it because dedup silently misses. Fix: register the file path on API writes and normalize self-write keys.
+- [ ] **Git versioning stops after a file is written then deleted within one commit batch** (pre-existing, high priority). `TransactionManager.commitPending()` stages the batch in order; for a write whose file was deleted before the debounced commit (e.g. create then delete a person within 5 s, or upload then delete an asset), `git.add` throws `Could not find people/….yaml`. The catch re-queues the *whole* batch, poison entry included, so every later commit fails the same way: verified that an unrelated later write never reaches git history (0 commits). Files stay correct on disk, but versioning silently stops until restart, and the queued changes are then dropped without ever being committed. Seen in every e2e run as `[TransactionManager] Commit failed`. Fix: collapse each batch to the final state per path (skip `git.add` for paths missing on disk, `git.remove` only if tracked), and don't re-queue an entry that can never succeed.
 - [ ] **`tests/e2e/geocoding.test.ts` fails when run alone** (order dependence, pre-existing): the EXIF-GPS upload test (`geocoding.test.ts:104`) can't find the London location span at line 140, but passes in the full `npm run test:e2e` run. Root cause not yet investigated.
+
+### Dependency Maintenance
+
+- [ ] **`maplibre-gl` 5.24.0 → ≥ 6.4.1** (client). The last open security alert: Dependabot #170, critical, XSS sanitizer bypass in `DOM.sanitize()`. Dependabot PR #127 fails CI; it's a major version, so it needs a migration of the Map View (`client/src/features/map/`) and a re-check of the visual-regression baselines (`npm run test:visual`).
+- [ ] **Dependabot grouped update PRs fail CI**: #130 (45 updates) and #132 (21 updates). Dependencies are drifting. Find the package(s) breaking each group and either fix the code or add an `ignore` entry to `.github/dependabot.yml`, as already done for TypeScript 7 and ESLint 10.
 
 ### Phase 5.2 — Map View (`/map`)
 
