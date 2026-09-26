@@ -6,8 +6,10 @@ import supertest from 'supertest';
 import git from 'isomorphic-git';
 import * as fs from 'fs';
 import * as path from 'path';
+import { createFixtureDataDir } from '../fixtures/fixtureDataDir';
 
-const TEST_DATA_DIR = './tests/fixtures/data';
+// Own copy of the fixture data: test files run in parallel (see fixtureDataDir.ts)
+const TEST_DATA_DIR = createFixtureDataDir('assets-test');
 const ASSETS_DIR = path.join(TEST_DATA_DIR, 'assets');
 const META_DIR = path.join(TEST_DATA_DIR, '_meta');
 
@@ -97,6 +99,7 @@ describe('Assets API', () => {
 
     afterAll(() => {
         cleanupTestAssets();
+        fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
     });
 
     // ── GET /api/assets ──────────────────────────────────────────────────────

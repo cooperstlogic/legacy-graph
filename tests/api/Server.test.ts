@@ -6,6 +6,10 @@ import git from 'isomorphic-git';
 import * as fs from 'fs';
 import * as nodeFs from 'fs';
 import * as path from 'path';
+import { createFixtureDataDir } from '../fixtures/fixtureDataDir';
+
+// Own copy of the fixture data: test files run in parallel (see fixtureDataDir.ts)
+const TEST_DATA_DIR = createFixtureDataDir('server-test');
 
 describe('Fastify API Server', () => {
     let server: FastifyInstance;
@@ -13,7 +17,7 @@ describe('Fastify API Server', () => {
 
     beforeEach(async () => {
         // Ensure git repo exists for snapshot tests
-        const testDataDir = './tests/fixtures/data';
+        const testDataDir = TEST_DATA_DIR;
         const gitDir = path.join(testDataDir, '.git');
 
         if (!fs.existsSync(gitDir)) {
@@ -56,11 +60,7 @@ describe('Fastify API Server', () => {
     });
 
     afterAll(() => {
-        const testDataDir = './tests/fixtures/data';
-        const assetsDir = path.join(testDataDir, 'assets');
-        if (fs.existsSync(assetsDir)) {
-            fs.rmSync(assetsDir, { recursive: true, force: true });
-        }
+        fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
     });
 
     it('should start server successfully', () => {
@@ -466,7 +466,7 @@ describe('Fastify API Server', () => {
             await request.delete(`/api/people/${personId}/media/${filename}`);
 
             // File should still be on disk (unlink-only — DELETE /api/assets/:filename handles actual deletion)
-            const assetPath = path.join('./tests/fixtures/data', 'assets', filename);
+            const assetPath = path.join(TEST_DATA_DIR, 'assets', filename);
             expect(fs.existsSync(assetPath)).toBe(true);
 
             // Cleanup the orphaned file
@@ -681,7 +681,7 @@ describe('Fastify API Server', () => {
     });
 
     describe('POST /api/import/gedcom (additive vs replace modes)', () => {
-        const testDataDir = './tests/fixtures/data';
+        const testDataDir = TEST_DATA_DIR;
         const peopleDir = path.join(testDataDir, 'people');
         const FIXTURE_PERSON_ID = 'N_test-import-2000-fixture';
         const FIXTURE_PERSON_YAML = `version: "5.1"
@@ -734,7 +734,7 @@ _gedcom: {}
 0 TRLR`;
 
         // Minimal valid GEDCOM with one person: first=Test, last=Import, born 2000
-        // Matches the fixture person N_test-import-2000-* already in tests/fixtures/data/people/
+        // Matches the fixture person N_test-import-2000-* copied from tests/fixtures/data/people/
         const DUPLICATE_GED = `0 HEAD
 1 GEDC
 2 VERS 5.5.1
@@ -805,7 +805,7 @@ _gedcom: {}
     });
 
     describe('GET /api/graph', () => {
-        const graphPeopleDir = path.join('./tests/fixtures/data', 'people');
+        const graphPeopleDir = path.join(TEST_DATA_DIR, 'people');
         let existingPeopleFiles: Set<string>;
 
         beforeEach(() => {

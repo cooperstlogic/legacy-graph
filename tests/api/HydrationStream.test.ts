@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, afterAll } from 'vitest';
 import { FastifyInstance } from 'fastify';
 import { createServer } from '../../src/server';
 import supertest from 'supertest';
@@ -8,11 +8,13 @@ import * as fs from 'fs';
 import * as nodeFs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { createFixtureDataDir } from '../fixtures/fixtureDataDir';
 
 describe('SSE Hydration Stream (Phase 3.8.3)', () => {
     let server: FastifyInstance;
     let request: ReturnType<typeof supertest>;
-    const testDataDir = './tests/fixtures/data';
+    // Own copy of the fixture data: test files run in parallel (see fixtureDataDir.ts)
+    const testDataDir = createFixtureDataDir('hydration-stream-test');
     let authDataDir: string | undefined;
 
     beforeEach(async () => {
@@ -34,6 +36,10 @@ describe('SSE Hydration Stream (Phase 3.8.3)', () => {
 
         const authPath = path.join(testDataDir, '_meta', 'auth.yaml');
         if (fs.existsSync(authPath)) fs.unlinkSync(authPath);
+    });
+
+    afterAll(() => {
+        fs.rmSync(testDataDir, { recursive: true, force: true });
     });
 
     afterEach(async () => {
@@ -88,8 +94,7 @@ describe('SSE Hydration Stream (Phase 3.8.3)', () => {
     });
 
     it('should be exempt from auth guard', async () => {
-        // Own data dir: writing auth.yaml into the shared tests/fixtures/data would turn
-        // auth on for any server that Server/Assets/Stories tests boot in parallel (401s).
+        // Own data dir so auth.yaml can't leak into the other tests in this file
         authDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hydration-auth-test-'));
         const authDir = path.join(authDataDir, '_meta');
         fs.mkdirSync(authDir, { recursive: true });
