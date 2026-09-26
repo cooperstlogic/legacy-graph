@@ -4,6 +4,7 @@ import git from 'isomorphic-git';
 import * as nodeFs from 'fs';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { resolveWithinRoot } from './safePath';
 
 export interface TransactionManagerOptions {
     debounceMs?: number; // Default: 5000 (5 seconds)
@@ -41,7 +42,11 @@ export class TransactionManager {
      * The commit fires after `debounceMs` of inactivity.
      */
     async writeFile(relativePath: string, content: string, label: string): Promise<void> {
+        resolveWithinRoot(this.rootDir, relativePath);
         await this.writeMutex.runExclusive(async () => {
+            // Keep the rootDir-relative form (not the resolved absolute path): GraphEngine
+            // matches it against watcher event paths, and changing it changes which
+            // app writes the watcher treats as external.
             const targetPath = path.join(this.rootDir, relativePath);
 
             // Ensure parent directory exists
@@ -68,6 +73,7 @@ export class TransactionManager {
      * The file must already be removed from disk before calling this.
      */
     async removeFile(relativePath: string, label: string): Promise<void> {
+        resolveWithinRoot(this.rootDir, relativePath);
         await this.writeMutex.runExclusive(async () => {
             this.pendingWrites.push({ relativePath, label, deleted: true });
             this.resetDebounce();
@@ -79,6 +85,7 @@ export class TransactionManager {
      * Queues it for git staging in the next batched commit.
      */
     async trackFile(relativePath: string, label: string): Promise<void> {
+        resolveWithinRoot(this.rootDir, relativePath);
         await this.writeMutex.runExclusive(async () => {
             this.pendingWrites.push({ relativePath, label });
             this.resetDebounce();

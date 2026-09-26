@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import cookie from '@fastify/cookie';
 import compress from '@fastify/compress';
+import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import * as path from 'path';
 import { GraphEngine } from './core/GraphEngine';
@@ -41,6 +42,15 @@ export async function createServer(config: ServerConfig): Promise<FastifyInstanc
     await server.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } });
     await server.register(cookie);
     await server.register(compress, { global: true, encodings: ['br', 'gzip'] });
+    // Opt-in per route (see auth.ts); a global limit would throttle bulk uploads and geocoding.
+    await server.register(rateLimit, {
+        global: false,
+        errorResponseBuilder: (_request, context) => ({
+            statusCode: context.statusCode,
+            error: `Too many attempts, retry in ${context.after}`,
+            code: 'RATE_LIMITED',
+        }),
+    });
 
     const authConfig = await loadAuthConfig(config.dataDir);
     if (authConfig) {

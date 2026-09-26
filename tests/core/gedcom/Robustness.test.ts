@@ -98,4 +98,28 @@ describe('GEDCOM Robustness', () => {
             expect(child!.relationships.parents.map(r => r.id)).toContain(mother!.id);
         });
     });
+
+    describe('Line parsing', () => {
+        it('should accept bare CR line terminators (allowed by the GEDCOM 5.5.1 grammar)', async () => {
+            const input = ['0 HEAD', '0 @I1@ INDI', '1 NAME John /Doe/', '1 BIRT', '2 DATE 10 JAN 1980', '0 TRLR'].join('\r');
+            const result = await reader.parse(input);
+            expect(result.people).toHaveLength(1);
+            expect(result.people[0].names[0].first).toBe('John');
+            expect(result.people[0].events[0].sort_date).toBe('1980-01-10');
+        });
+
+        it('should keep a line value that contains a Unicode line separator', async () => {
+            // `.` does not match U+2028, which used to make the line regex fail (after
+            // quadratic backtracking over the whitespace run) and silently drop the line.
+            const input = `
+0 HEAD
+0 @I1@ INDI
+1 NAME John /Doe/
+1 NOTE first part\u2028second part
+0 TRLR
+`;
+            const result = await reader.parse(input);
+            expect(result.people[0].scrapbook_md).toContain('first part\u2028second part');
+        });
+    });
 });

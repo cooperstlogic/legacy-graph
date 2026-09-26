@@ -124,6 +124,24 @@ describe('Authentication', () => {
             expect(response.status).toBe(400);
             expect(response.body).toHaveProperty('code', 'MISSING_CREDENTIALS');
         });
+
+        it('should return 429 after 10 attempts from one IP within a minute', async () => {
+            for (let i = 0; i < 10; i++) {
+                const attempt = await request
+                    .post('/api/auth/login')
+                    .send({ username: TEST_USER, password: 'wrongpassword' });
+                expect(attempt.status).toBe(401);
+            }
+
+            // Even the correct password is refused once the limit is hit
+            const response = await request
+                .post('/api/auth/login')
+                .send({ username: TEST_USER, password: TEST_PASSWORD });
+
+            expect(response.status).toBe(429);
+            expect(response.body).toHaveProperty('code', 'RATE_LIMITED');
+            expect(response.headers['set-cookie']).toBeUndefined();
+        });
     });
 
     describe('POST /api/auth/logout', () => {

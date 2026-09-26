@@ -10,6 +10,7 @@ import { Person, PersonSchema, SlimPerson, toSlimPerson } from '../../schemas/Pe
 import { sliceTimeline, type TimelineItem, type PaginatedTimeline } from '../../core/TimelineSlicer';
 import { invalidateComputed } from '../../core/GraphLogic';
 import type { AppInstance } from '../types';
+import { isSafePathSegment } from '../../core/safePath';
 import { loadAssetIndex, saveAssetIndex, upsertAssetEntry, extractExifDate, reverseGeocodeExifGps } from '../../core/assetMetaUtils';
 
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif', '.heic', '.heif', '.tiff', '.tif', '.svg']);
@@ -288,7 +289,9 @@ export async function peopleRoutes(server: FastifyInstance) {
         const { id } = request.params;
         const graph = graphEngine.getGraph();
 
-        if (!graph.hasNode(id)) {
+        // IDs come from people/*.yaml, which can be hand-edited; the id is joined
+        // onto people/ and assets/ below, so it must be a single path segment.
+        if (!isSafePathSegment(id) || !graph.hasNode(id)) {
             return reply.status(404).send({
                 error: 'Person not found',
                 code: 'PERSON_NOT_FOUND',
@@ -469,7 +472,8 @@ export async function peopleRoutes(server: FastifyInstance) {
             _gedcom: heavyFields?._gedcom,
         } as Person;
 
-        if (!fullPerson.assets.includes(filename)) {
+        // assets[] is client-supplied, so membership alone doesn't make the name safe to unlink
+        if (!isSafePathSegment(filename) || !fullPerson.assets.includes(filename)) {
             return reply.status(404).send({
                 error: 'Asset not found',
                 code: 'ASSET_NOT_FOUND'

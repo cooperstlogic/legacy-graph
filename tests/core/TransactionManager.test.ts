@@ -120,4 +120,27 @@ describe('TransactionManager', () => {
         expect(source).not.toContain("from 'simple-git'");
         expect(source).toContain('isomorphic-git');
     });
+
+    describe('paths outside the root', () => {
+        const outside = path.join(REPO_DIR, '..', 'tx-escape.txt');
+
+        afterEach(() => {
+            fs.rmSync(outside, { force: true });
+        });
+
+        it('writeFile rejects a path that escapes the root and writes nothing', async () => {
+            await expect(txManager.writeFile('../tx-escape.txt', 'x', 'escape')).rejects.toThrow(/outside/);
+            expect(fs.existsSync(outside)).toBe(false);
+        });
+
+        it('writeFile rejects an absolute path', async () => {
+            await expect(txManager.writeFile(outside, 'x', 'escape')).rejects.toThrow(/outside/);
+            expect(fs.existsSync(outside)).toBe(false);
+        });
+
+        it('trackFile and removeFile reject paths that escape the root', async () => {
+            await expect(txManager.trackFile('../tx-escape.txt', 'escape')).rejects.toThrow(/outside/);
+            await expect(txManager.removeFile('people/../../tx-escape.txt', 'escape')).rejects.toThrow(/outside/);
+        });
+    });
 });

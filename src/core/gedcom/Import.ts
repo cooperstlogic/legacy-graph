@@ -58,7 +58,8 @@ export class GedcomReader {
      */
     public async parse(input: string | Buffer): Promise<ImportResult> {
         const raw = input.toString();
-        const lines = raw.split(/\r?\n/);
+        // GEDCOM terminators: CR, LF, CRLF or LFCR (the last yields an empty line, skipped below)
+        const lines = raw.split(/\r\n|\r|\n/);
         
         const roots: GedcomNode[] = [];
         const stack: { node: GedcomNode, level: number }[] = [];
@@ -111,7 +112,9 @@ export class GedcomReader {
         // Regex: ^(\d+)\s+(@\w+@)?\s*(\w+)(\s+(.*))?$
         // Note: Xref IDs can contain anything, usually alphanum. Tag is alphanum.
         
-        const match = line.match(/^(\d+)\s+(?:(@[^@]+@)\s+)?(\w+)(?:\s+(.*))?$/);
+        // [\s\S]* (not .*) so the value can never fail to match: with .*, a character
+        // it skips (e.g. U+2028) forced quadratic backtracking and dropped the line.
+        const match = line.match(/^(\d+)\s+(?:(@[^@]+@)\s+)?(\w+)(?:\s+([\s\S]*))?$/);
         if (!match) return null;
 
         return {
