@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import * as yaml from 'js-yaml';
+import { dumpYaml } from '../../core/yaml';
 import type { AppInstance } from '../types';
 import type { Place } from '../../schemas/PlaceSchema';
 import type { SlimPerson } from '../../schemas/PersonSchema';
@@ -409,7 +409,7 @@ export async function geocodingRoutes(server: FastifyInstance) {
                     const label = primaryName
                         ? `${primaryName.first} ${primaryName.last}`
                         : personId;
-                    await txManager.writeFile(relativePath, yaml.dump(currentPerson), label);
+                    await txManager.writeFile(relativePath, dumpYaml(currentPerson), label);
 
                     const newSlim = toSlimPerson(currentPerson);
                     graph.setNodeAttribute(personId, 'data', newSlim);

@@ -3,7 +3,7 @@ import fg from 'fast-glob';
 import pLimit from 'p-limit';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import yaml from 'js-yaml';
+import { loadYaml } from './yaml';
 import { PersonSchema, Person } from '../schemas/PersonSchema';
 
 export class BootLoader {
@@ -31,7 +31,7 @@ export class BootLoader {
                     const content = await fs.readFile(file, 'utf8');
 
                     // Parse YAML
-                    const raw = yaml.load(content);
+                    const raw = loadYaml(content);
 
                     // Validate Zod Schema
                     const data = PersonSchema.parse(raw);

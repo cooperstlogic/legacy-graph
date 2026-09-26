@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import yaml from 'js-yaml';
+import { loadYaml } from '../../core/yaml';
 import { AuthConfig, AuthConfigSchema } from '../../schemas/AuthSchema';
 
 // Routes that do NOT require authentication
@@ -28,7 +28,7 @@ export async function loadAuthConfig(dataDir: string): Promise<AuthConfig | null
     const authPath = path.join(dataDir, '_meta', 'auth.yaml');
     try {
         const raw = await fs.readFile(authPath, 'utf-8');
-        const parsed = yaml.load(raw);
+        const parsed = loadYaml(raw);
         return AuthConfigSchema.parse(parsed);
     } catch (err: unknown) {
         if (err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT') {

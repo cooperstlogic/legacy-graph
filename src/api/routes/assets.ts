@@ -3,7 +3,7 @@ import * as nodeFs from 'fs';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import matter from 'gray-matter';
-import yaml from 'js-yaml';
+import { dumpYaml } from '../../core/yaml';
 import { pipeline } from 'stream/promises';
 import { AssetMetadataSchema } from '../../schemas/AssetSchema';
 import { type Person, PersonSchema, type SlimPerson, toSlimPerson } from '../../schemas/PersonSchema';
@@ -363,7 +363,7 @@ export async function assetsRoutes(server: FastifyInstance) {
 
                 const primaryName = fullPerson.names?.[0];
                 const label = primaryName ? `${primaryName.first} ${primaryName.last}` : personId;
-                await txManager.writeFile(path.join('people', `${personId}.yaml`), yaml.dump(fullPerson), label);
+                await txManager.writeFile(path.join('people', `${personId}.yaml`), dumpYaml(fullPerson), label);
 
                 const newSlim = toSlimPerson(fullPerson);
                 graph.setNodeAttribute(personId, 'data', newSlim);
@@ -488,7 +488,7 @@ export async function assetsRoutes(server: FastifyInstance) {
 
             const primaryName = fullPerson.names?.[0];
             const label = primaryName ? `${primaryName.first} ${primaryName.last}` : id;
-            await txManager.writeFile(path.join('people', `${id}.yaml`), yaml.dump(fullPerson), label);
+            await txManager.writeFile(path.join('people', `${id}.yaml`), dumpYaml(fullPerson), label);
 
             const newSlim = toSlimPerson(fullPerson);
             graph.setNodeAttribute(id, 'data', newSlim);
@@ -612,7 +612,7 @@ export async function assetsRoutes(server: FastifyInstance) {
 
         const primaryName = fullPerson.names?.[0];
         const label = primaryName ? `${primaryName.first} ${primaryName.last}` : id;
-        await txManager.writeFile(path.join('people', `${id}.yaml`), yaml.dump(fullPerson), label);
+        await txManager.writeFile(path.join('people', `${id}.yaml`), dumpYaml(fullPerson), label);
 
         const newSlim = toSlimPerson(fullPerson);
         graph.setNodeAttribute(id, 'data', newSlim);

@@ -1,6 +1,6 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import yaml from 'js-yaml';
+import { loadYaml, dumpYaml } from './yaml';
 import sharp from 'sharp';
 import exifReader from 'exif-reader';
 import { Mutex } from 'async-mutex';
@@ -18,7 +18,7 @@ const EXIF_IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif', '.he
 export async function loadAssetIndex(dataDir: string): Promise<AssetIndex> {
     try {
         const raw = await fs.readFile(path.join(dataDir, META_REL), 'utf8');
-        return AssetIndexSchema.parse(yaml.load(raw) ?? {});
+        return AssetIndexSchema.parse(loadYaml(raw) ?? {});
     } catch (err: unknown) {
         if (err && typeof err === 'object' && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT') {
             return {};
@@ -33,7 +33,7 @@ export async function saveAssetIndex(
     txManager: { writeFile: (rel: string, content: string, label: string) => Promise<void> },
 ): Promise<void> {
     await fs.mkdir(path.join(dataDir, '_meta'), { recursive: true });
-    await txManager.writeFile(META_REL, yaml.dump(index), 'asset index');
+    await txManager.writeFile(META_REL, dumpYaml(index), 'asset index');
 }
 
 /**

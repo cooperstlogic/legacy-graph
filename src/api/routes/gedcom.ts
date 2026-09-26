@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import yaml from 'js-yaml';
+import { loadYaml, dumpYaml } from '../../core/yaml';
 import { GedcomReader } from '../../core/gedcom/Import';
 import type { AppInstance } from '../types';
 import type { Person } from '../../schemas/PersonSchema';
@@ -91,7 +91,7 @@ export async function gedcomRoutes(server: FastifyInstance) {
                 for (const filename of existingFiles.filter(f => f.endsWith('.yaml'))) {
                     try {
                         const content = await fs.readFile(path.join(peopleDir, filename), 'utf8');
-                        const existing = yaml.load(content);
+                        const existing = loadYaml(content);
                         const key = buildDedupKey(existing);
                         if (key) dedupKeys.add(key);
                     } catch { /* skip unparseable files */ }
@@ -130,7 +130,7 @@ export async function gedcomRoutes(server: FastifyInstance) {
                 const relativePath = path.join('people', `${person.id}.yaml`);
                 const primaryName = person.names?.[0];
                 const label = primaryName ? `${primaryName.first} ${primaryName.last}` : person.id;
-                await txManager.writeFile(relativePath, yaml.dump(person), label);
+                await txManager.writeFile(relativePath, dumpYaml(person), label);
             }
 
             await txManager.flush();

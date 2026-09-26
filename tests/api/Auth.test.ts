@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as nodeFs from 'fs';
 import * as path from 'path';
 import bcrypt from 'bcryptjs';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import jwt from 'jsonwebtoken';
 
 describe('Authentication', () => {

@@ -5,7 +5,7 @@ import type { AppInstance } from '../../src/api/types';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 
 describe('GET /api/map/events', () => {
     let server: FastifyInstance;
