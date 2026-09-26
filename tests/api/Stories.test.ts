@@ -6,8 +6,10 @@ import supertest from 'supertest';
 import git from 'isomorphic-git';
 import * as fs from 'fs';
 import * as path from 'path';
+import { createFixtureDataDir } from '../fixtures/fixtureDataDir';
 
-const TEST_DATA_DIR = './tests/fixtures/data';
+// Own copy of the fixture data: test files run in parallel (see fixtureDataDir.ts)
+const TEST_DATA_DIR = createFixtureDataDir('stories-test');
 const STORIES_DIR = path.join(TEST_DATA_DIR, 'stories');
 
 function cleanupStories() {
@@ -59,6 +61,7 @@ describe('Stories API', () => {
 
     afterAll(() => {
         cleanupStories();
+        fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
     });
 
     // ── List ────────────────────────────────────────────────────────────────
