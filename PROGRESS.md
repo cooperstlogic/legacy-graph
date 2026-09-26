@@ -88,7 +88,7 @@ LegacyGraph should work as a shared instance where several people can edit, not 
 
 **Concurrent editing:**
 5. **Silent overwrites.** `PUT /api/people/:id` and `PUT /api/stories/:id` merge the patch into the current state with no version check, so the last save wins. Add optimistic concurrency (send `last_modified` / `modified_at` or an ETag with `If-Match`, return `409 CONFLICT` when stale) and a UI to resolve conflicts.
-6. **API-created people lose `scrapbook_md` on the next edit** (data loss, fix first). `GraphEngine.loadHeavyFields()` finds the YAML file through `reverseFileMap`, which is only filled at boot or when the watcher re-reads a file. When self-write dedup matches the watcher's path (an absolute, symlink-free data dir), a person created via `POST /api/people` never gets an entry, so the next `PUT` rebuilds it with `scrapbook_md: ''`, and batch geocode apply skips them. More editors means more of these writes.
+6. **API-created people lose `scrapbook_md` on the next edit** (data loss, fix first). Described under **Known Bugs** above. Concurrent editors hit it more often.
 
 **Attribution & accounts:**
 7. **Git history doesn't show who changed what.** `TransactionManager` commits as the git config author or the default `LegacyGraph <legacygraph@localhost>`. Pass the authenticated user into writes and commit as them, or add a `Co-authored-by`/trailer per batch; batched commits that mix users need splitting per author. Coordinate with Phase 5.8 (Git History).
