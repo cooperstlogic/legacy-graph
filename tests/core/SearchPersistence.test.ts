@@ -2,7 +2,7 @@
 // TDD: Search Index Persistence (Phase 3.7.2)
 // Tests written BEFORE implementation — all should fail initially.
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import { GraphEngine } from '../../src/core/GraphEngine';
@@ -235,5 +235,69 @@ describe('Search Index Persistence (Phase 3.7.2)', () => {
         // Should have written
         const mtime3 = fs.statSync(SEARCH_INDEX_PATH).mtimeMs;
         expect(mtime3).toBeGreaterThan(mtime1);
+    });
+
+    it('hydrate() leaves no debounced write pending (it exports the index itself)', async () => {
+        writePersonYaml('N_A', 'Alice', 'Smith');
+        const engine = new GraphEngine(DATA_DIR);
+        await engine.hydrate();
+
+        // A leftover timer would rewrite the index ~500ms later, racing any caller
+        // that deletes or moves the data dir right after hydration.
+        fs.rmSync(SEARCH_INDEX_PATH);
+        await new Promise(r => setTimeout(r, 600));
+        expect(fs.existsSync(SEARCH_INDEX_PATH)).toBe(false);
+    });
+
+    it('close() writes a pending debounced index immediately and cancels the timer', async () => {
+        writePersonYaml('N_A', 'Alice', 'Smith');
+        const engine = new GraphEngine(DATA_DIR);
+        await engine.hydrate();
+        fs.rmSync(SEARCH_INDEX_PATH);
+
+        engine.searchService.indexPerson({
+            version: "5.1", id: "N_A", created: "2023", last_modified: "2023",
+            names: [{ first: "Alicia", last: "Smith" }], sex: "U",
+            relationships: { parents: [] }, events: [], assets: [], tags: []
+        }, "");
+        await engine.close();
+
+        // Flushed on close: shutdown must not lose the latest index
+        expect(fs.readFileSync(SEARCH_INDEX_PATH, 'utf8')).toContain('N_A');
+
+        // ...and the debounce timer is gone: nothing writes into the data dir afterwards
+        // (a late write here raced test teardown, recreating _meta mid-`rm`: ENOTEMPTY)
+        fs.rmSync(SEARCH_INDEX_PATH);
+        await new Promise(r => setTimeout(r, 600));
+        expect(fs.existsSync(SEARCH_INDEX_PATH)).toBe(false);
+    });
+
+    it('serializes index writes (hydration included) and close() waits for every one', async () => {
+        writePersonYaml('N_A', 'Alice', 'Smith');
+        const engine = new GraphEngine(DATA_DIR);
+        const svc = engine.searchService;
+
+        // Slow each write down so overlapping writes would actually overlap
+        let active = 0;
+        let maxActive = 0;
+        let completed = 0;
+        const realExport = svc.exportIndex.bind(svc);
+        vi.spyOn(svc, 'exportIndex').mockImplementation(async (filePath: string) => {
+            active++;
+            maxActive = Math.max(maxActive, active);
+            await new Promise(r => setTimeout(r, 30));
+            await realExport(filePath);
+            active--;
+            completed++;
+        });
+
+        await engine.hydrate();          // hydration's export goes through the same queue
+        void svc.persist();              // two more writes queued back to back
+        void svc.persist();
+        await engine.close();
+
+        expect(maxActive).toBe(1);       // never two writers at once (no older-overwrites-newer)
+        expect(active).toBe(0);          // nothing still writing after close() resolves
+        expect(completed).toBe(3);
     });
 });

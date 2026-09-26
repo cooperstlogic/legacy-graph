@@ -360,6 +360,7 @@ Pre-computes the "Integrated Feed" for the UI Person Detail page.
 **Framework**: Fastify (plugin-based route architecture).
 **Base URL**: `/api`.
 **Errors**: Standard JSON: `{ error: string, code: string, details?: any }`.
+**Path Safety**: Any client-supplied value that becomes a file name under the data directory — story `:id`, asset `:filename` (route param or request body), and asset names read from `person.assets[]` or story frontmatter `assets` — must be a single path segment: non-empty, not `.` or `..`, and free of `/`, `\` and NUL. Route params are URL-decoded, so `..%2F` counts as `../`. Unsafe route params return the endpoint's usual `404` (`STORY_NOT_FOUND` / `ASSET_NOT_FOUND`); an unsafe body `filename` returns `400 VALIDATION_ERROR`; unsafe stored asset names are never unlinked. As defense in depth, `TransactionManager` rejects any write, track or remove whose path resolves outside the data directory.
 
 **Route Plugin Architecture**: The server is decomposed into Fastify route plugins (`src/api/routes/`): `people.ts`, `stories.ts`, `assets.ts`, `system.ts`, `search.ts`, `auth.ts`, `gedcom.ts`. Shared services (`GraphEngine`, `TransactionManager`, `AuthConfig`) are bound to the Fastify instance via `server.decorate('appServices', ...)` — eliminating module-level singletons and ensuring clean lifecycle management across test runs. The server orchestrator (`server.ts`) handles only plugin registration, Fastify decoration, and lifecycle hooks (~95 lines).
 
@@ -435,9 +436,11 @@ Pre-computes the "Integrated Feed" for the UI Person Detail page.
   - _Body_: `{ username: string, password: string }`.
   - _Effect_: Validates against `/_meta/auth.yaml` (BCrypt). Returns JWT in HttpOnly Cookie.
   - _401_: Invalid credentials.
+  - _429_: More than 10 attempts from one client IP within a minute (successful or not): `{ error, code: "RATE_LIMITED" }`. Keyed per IP, so one attacker cannot lock other users out.
 - `POST /auth/logout`: End session.
   - _Effect_: Clears HttpOnly Cookie.
 - **Auth Guard**: All endpoints except `POST /auth/login`, `GET /system/status`, and `GET /system/hydration/stream` require a valid JWT.
+- **Rate Limiting**: LegacyGraph must work as a shared, multi-user instance, so every API endpoint is rate-limited: 600 requests per minute by default (`RATE_LIMIT_MAX`), keyed by authenticated username, or by client IP when unauthenticated. Exceeding it returns `429 { error, code: "RATE_LIMITED" }`. Static delivery under `/assets/` is exempt. Behind a reverse proxy, `TRUST_PROXY` must be set to the proxy's comma-separated addresses/CIDRs (Fastify `trustProxy`), so the client IP is the real client rather than the proxy, and `X-Forwarded-For` from anyone else is ignored. `true` is accepted but logs a warning at boot: it trusts the header from every client, so a client can rotate a spoofed IP to get a fresh bucket per request. A hop count is rejected at boot, because Fastify fails closed on numeric `trustProxy`, which would silently key everyone by the proxy's IP.
 
 ---
 

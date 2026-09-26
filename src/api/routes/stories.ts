@@ -11,6 +11,7 @@ import { StorySchema, StoryFeedItem, FullStory } from '../../schemas/StorySchema
 import { formatPlaceDisplay, type Place } from '../../schemas/PlaceSchema';
 import type { SlimPerson } from '../../schemas/PersonSchema';
 import type { AppInstance } from '../types';
+import { isSafePathSegment } from '../../core/safePath';
 
 /** Strip `.md` from a filename to get the API-facing story id. */
 function filenameToId(filename: string): string {
@@ -111,6 +112,8 @@ async function writeStoryFile(
     const mentions = extractMentions(content);
     return toFullStory(id, parsed, content, mentions);
 }
+
+const STORY_NOT_FOUND = { error: 'Story not found', code: 'STORY_NOT_FOUND' } as const;
 
 /** Build a person-name resolver from the in-memory graph. */
 function makePersonNameResolver(graphEngine: AppInstance['appServices']['graphEngine']): (id: string) => string {
@@ -235,6 +238,7 @@ export async function storiesRoutes(server: FastifyInstance) {
 
     server.get<{ Params: { id: string } }>('/api/stories/:id', async (request, reply) => {
         const { id } = request.params;
+        if (!isSafePathSegment(id)) return reply.status(404).send(STORY_NOT_FOUND);
         const filePath = path.join(storiesDir, `${id}.md`);
 
         try {
@@ -244,7 +248,7 @@ export async function storiesRoutes(server: FastifyInstance) {
             const mentions = extractMentions(content);
             return toFullStory(id, metadata, content, mentions);
         } catch {
-            return reply.status(404).send({ error: 'Story not found', code: 'STORY_NOT_FOUND' });
+            return reply.status(404).send(STORY_NOT_FOUND);
         }
     });
 
@@ -318,6 +322,7 @@ export async function storiesRoutes(server: FastifyInstance) {
     }>('/api/stories/:id', async (request, reply) => {
         const { id } = request.params;
         const body = request.body;
+        if (!isSafePathSegment(id)) return reply.status(404).send(STORY_NOT_FOUND);
         const filePath = path.join(storiesDir, `${id}.md`);
 
         // Load existing
@@ -327,7 +332,7 @@ export async function storiesRoutes(server: FastifyInstance) {
             const parsed = matter(raw);
             existing = { data: parsed.data, content: parsed.content };
         } catch {
-            return reply.status(404).send({ error: 'Story not found', code: 'STORY_NOT_FOUND' });
+            return reply.status(404).send(STORY_NOT_FOUND);
         }
 
         // Validate and normalize title if provided
@@ -367,6 +372,7 @@ export async function storiesRoutes(server: FastifyInstance) {
 
     server.delete<{ Params: { id: string } }>('/api/stories/:id', async (request, reply) => {
         const { id } = request.params;
+        if (!isSafePathSegment(id)) return reply.status(404).send(STORY_NOT_FOUND);
         const filePath = path.join(storiesDir, `${id}.md`);
 
         // Read story before deleting so we know which assets to consider for cleanup.
@@ -376,7 +382,7 @@ export async function storiesRoutes(server: FastifyInstance) {
             const { data } = matter(raw);
             storyAssets = Array.isArray(data.assets) ? data.assets : [];
         } catch {
-            return reply.status(404).send({ error: 'Story not found', code: 'STORY_NOT_FOUND' });
+            return reply.status(404).send(STORY_NOT_FOUND);
         }
 
         await fs.unlink(filePath);
@@ -412,6 +418,8 @@ export async function storiesRoutes(server: FastifyInstance) {
 
             // Delete asset files that are no longer referenced anywhere
             for (const asset of storyAssets) {
+                // Asset names come from client-supplied frontmatter; never unlink outside assets/
+                if (!isSafePathSegment(asset)) continue;
                 if (!referencedByStories.has(asset) && !referencedByPeople.has(asset)) {
                     try {
                         await fs.unlink(path.join(dataDir, 'assets', asset));
@@ -429,13 +437,17 @@ export async function storiesRoutes(server: FastifyInstance) {
 
     server.delete<{ Params: { id: string; filename: string } }>('/api/stories/:id/media/:filename', async (request, reply) => {
         const { id, filename } = request.params;
+        if (!isSafePathSegment(id)) return reply.status(404).send(STORY_NOT_FOUND);
+        if (!isSafePathSegment(filename)) {
+            return reply.status(404).send({ error: 'Asset not found', code: 'ASSET_NOT_FOUND' });
+        }
         const filePath = path.join(storiesDir, `${id}.md`);
 
         let existingRaw: string;
         try {
             existingRaw = await fs.readFile(filePath, 'utf8');
         } catch {
-            return reply.status(404).send({ error: 'Story not found', code: 'STORY_NOT_FOUND' });
+            return reply.status(404).send(STORY_NOT_FOUND);
         }
 
         // Remove asset file from disk (best-effort)
@@ -464,6 +476,7 @@ export async function storiesRoutes(server: FastifyInstance) {
 
     server.put<{ Params: { id: string } }>('/api/stories/:id/media', async (request, reply) => {
         const { id } = request.params;
+        if (!isSafePathSegment(id)) return reply.status(404).send(STORY_NOT_FOUND);
         const filePath = path.join(storiesDir, `${id}.md`);
 
         // Verify story exists
@@ -471,7 +484,7 @@ export async function storiesRoutes(server: FastifyInstance) {
         try {
             existingRaw = await fs.readFile(filePath, 'utf8');
         } catch {
-            return reply.status(404).send({ error: 'Story not found', code: 'STORY_NOT_FOUND' });
+            return reply.status(404).send(STORY_NOT_FOUND);
         }
 
         let data: Awaited<ReturnType<import('fastify').FastifyRequest['file']>> | undefined;

@@ -273,8 +273,8 @@ strings are preserved under `_gedcom.original_locations`.
 
 ## Authentication
 
-Auth is off by default — appropriate for a single user on `localhost`. To enable it, create
-`$DATA_DIR/_meta/auth.yaml`:
+Auth is off by default, which is only appropriate for a single user on `localhost`. Enable it
+for anything reachable by others. To enable it, create `$DATA_DIR/_meta/auth.yaml`:
 
 ```yaml
 jwt_secret: "a-random-string-of-at-least-32-characters"
@@ -286,6 +286,23 @@ users:
 
 The server detects the file on boot and guards every endpoint except `POST /api/auth/login`,
 `GET /api/system/status`, and the hydration SSE stream. Sessions are JWTs in an HttpOnly cookie.
+
+### Rate limits and reverse proxies
+
+Every API endpoint is limited to 600 requests per minute per signed-in user (or per client IP when
+signed out); login is limited to 10 attempts per minute per IP. Tune the general limit with
+`RATE_LIMIT_MAX` in `.env`.
+
+Behind a reverse proxy, set `TRUST_PROXY` to the proxy's address or CIDR so limits apply to real
+clients instead of all traffic sharing the proxy's IP:
+
+```bash
+TRUST_PROXY=10.0.0.5                  # or 172.16.0.0/12, or several: 10.0.0.5,10.0.0.6
+```
+
+Avoid `TRUST_PROXY=true`. It trusts `X-Forwarded-For` from every client, so anyone can spoof
+their IP and dodge the login limit (the server warns at boot). Hop counts such as `TRUST_PROXY=1`
+are rejected at startup: Fastify can't verify the peer from a count, so it would trust nothing.
 
 ---
 

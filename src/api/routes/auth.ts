@@ -9,7 +9,10 @@ export async function authRoutes(server: FastifyInstance) {
 
     server.post<{
         Body: { username?: string; password?: string }
-    }>('/api/auth/login', async (request, reply) => {
+    }>('/api/auth/login', {
+        // Brute-force protection: every attempt counts, successful or not
+        config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    }, async (request, reply) => {
         const { username, password } = request.body || {};
 
         if (!username || !password) {

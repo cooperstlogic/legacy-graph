@@ -43,6 +43,7 @@ describe('GraphEngine Hot-Patching', () => {
     });
 
     afterEach(async () => {
+        await engine.close(); // flush the debounced search-index write before deleting its dir
         await fs.rm(TEMP_DIR, { recursive: true, force: true });
     });
 
@@ -162,6 +163,7 @@ describe('Diff-Based Edge Reconciliation', () => {
     });
 
     afterEach(async () => {
+        await engine.close(); // flush the debounced search-index write before deleting its dir
         await fs.rm(TEMP_DIR, { recursive: true, force: true });
     });
 

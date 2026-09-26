@@ -1,8 +1,9 @@
-import Fastify, { FastifyInstance } from 'fastify';
+import Fastify, { FastifyInstance, type FastifyServerOptions } from 'fastify';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import cookie from '@fastify/cookie';
 import compress from '@fastify/compress';
+import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import * as path from 'path';
 import { GraphEngine } from './core/GraphEngine';
@@ -30,17 +31,70 @@ export interface ServerConfig {
     awaitHydration?: boolean;
     /** Path to GeoNames SQLite database. Falls back to GEONAMES_DB env var or ~/.legacy-graph/geonames.db */
     geonamesDb?: string;
+    /** Per-client API rate limit (default 600 requests per minute). */
+    rateLimit?: { max: number; timeWindow: string | number };
+    /** Fastify `trustProxy`: set when behind a reverse proxy so `request.ip` is the real client. */
+    trustProxy?: FastifyServerOptions['trustProxy'];
+}
+
+export const DEFAULT_RATE_LIMIT = { max: 600, timeWindow: '1 minute' } as const;
+
+/**
+ * Parse the TRUST_PROXY env var: "true", "false", or the proxy's comma-separated
+ * addresses/CIDRs (recommended). Hop counts are rejected: Fastify fails closed on a
+ * numeric trustProxy (it can't verify the peer is the proxy), so rate limits would
+ * silently key every client by the proxy's IP.
+ */
+export function parseTrustProxy(value: string | undefined): ServerConfig['trustProxy'] {
+    if (value === undefined || value.trim() === '') return undefined;
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+    if (/^\d+$/.test(value.trim())) {
+        throw new Error(
+            `TRUST_PROXY=${value}: a hop count is not supported. Set it to your proxy's address `
+            + `or CIDR (e.g. TRUST_PROXY=10.0.0.5 or 172.16.0.0/12), comma-separated for several.`
+        );
+    }
+    return value;
 }
 
 export async function createServer(config: ServerConfig): Promise<FastifyInstance> {
-    const server = Fastify({
-        logger: config.logger ?? true
-    });
+    // Typed up front: an inline union-typed trustProxy steers inference to the HTTP/2 overload
+    const options: FastifyServerOptions = {
+        logger: config.logger ?? true,
+        trustProxy: config.trustProxy ?? false,
+    };
+    const server = Fastify(options);
+    if (config.trustProxy === true) {
+        console.warn(
+            '[Server] TRUST_PROXY=true trusts X-Forwarded-For from any client, so clients can spoof '
+            + 'their IP and evade per-IP rate limits. Set TRUST_PROXY to your proxy\'s address instead, '
+            + 'unless the proxy overwrites (not appends to) X-Forwarded-For and is the only way in.'
+        );
+    }
 
     await server.register(cors, { origin: true });
     await server.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } });
     await server.register(cookie);
     await server.register(compress, { global: true, encodings: ['br', 'gzip'] });
+    // Applies to every route registered after this. Keyed per user when authenticated
+    // (the auth guard's onRequest hook runs before the route-level limiter), else per IP,
+    // so users sharing an office NAT or a reverse proxy don't share a bucket.
+    // Static assets are exempt: a thumbnail grid fetches dozens at once.
+    await server.register(rateLimit, {
+        ...(config.rateLimit ?? DEFAULT_RATE_LIMIT),
+        keyGenerator: (request) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- set by the auth guard
+            const username = (request as any).user?.username as string | undefined;
+            return username ? `user:${username}` : `ip:${request.ip}`;
+        },
+        allowList: (request) => request.url.startsWith('/assets/'),
+        errorResponseBuilder: (_request, context) => ({
+            statusCode: context.statusCode,
+            error: `Too many requests, retry in ${context.after}`,
+            code: 'RATE_LIMITED',
+        }),
+    });
 
     const authConfig = await loadAuthConfig(config.dataDir);
     if (authConfig) {
@@ -97,7 +151,7 @@ export async function createServer(config: ServerConfig): Promise<FastifyInstanc
     });
 
     server.addHook('onClose', async () => {
-        await graphEngine.stopWatcher();
+        await graphEngine.close();
         await txManager.destroy();
     });
 
