@@ -436,10 +436,11 @@ Pre-computes the "Integrated Feed" for the UI Person Detail page.
   - _Body_: `{ username: string, password: string }`.
   - _Effect_: Validates against `/_meta/auth.yaml` (BCrypt). Returns JWT in HttpOnly Cookie.
   - _401_: Invalid credentials.
-  - _429_: More than 10 attempts from one IP within a minute (successful or not): `{ error, code: "RATE_LIMITED" }`. Other endpoints are not rate-limited — LegacyGraph is a single-user, self-hosted app, and limits there would only throttle bulk operations such as uploads and batch geocoding.
+  - _429_: More than 10 attempts from one client IP within a minute (successful or not): `{ error, code: "RATE_LIMITED" }`. Keyed per IP, so one attacker cannot lock other users out.
 - `POST /auth/logout`: End session.
   - _Effect_: Clears HttpOnly Cookie.
 - **Auth Guard**: All endpoints except `POST /auth/login`, `GET /system/status`, and `GET /system/hydration/stream` require a valid JWT.
+- **Rate Limiting**: LegacyGraph must work as a shared, multi-user instance, so every API endpoint is rate-limited: 600 requests per minute by default (`RATE_LIMIT_MAX`), keyed by authenticated username, or by client IP when unauthenticated. Exceeding it returns `429 { error, code: "RATE_LIMITED" }`. Static delivery under `/assets/` is exempt. Behind a reverse proxy, `TRUST_PROXY` (Fastify `trustProxy`: `true`, a hop count, or trusted addresses) must be set so the client IP is the real client rather than the proxy.
 
 ---
 

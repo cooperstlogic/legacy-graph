@@ -31,23 +31,39 @@ export interface ServerConfig {
     awaitHydration?: boolean;
     /** Path to GeoNames SQLite database. Falls back to GEONAMES_DB env var or ~/.legacy-graph/geonames.db */
     geonamesDb?: string;
+    /** Per-client API rate limit (default 600 requests per minute). */
+    rateLimit?: { max: number; timeWindow: string | number };
+    /** Fastify `trustProxy`: set when behind a reverse proxy so `request.ip` is the real client. */
+    trustProxy?: boolean | string | number;
 }
+
+export const DEFAULT_RATE_LIMIT = { max: 600, timeWindow: '1 minute' } as const;
 
 export async function createServer(config: ServerConfig): Promise<FastifyInstance> {
     const server = Fastify({
-        logger: config.logger ?? true
+        logger: config.logger ?? true,
+        trustProxy: config.trustProxy ?? false,
     });
 
     await server.register(cors, { origin: true });
     await server.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } });
     await server.register(cookie);
     await server.register(compress, { global: true, encodings: ['br', 'gzip'] });
-    // Opt-in per route (see auth.ts); a global limit would throttle bulk uploads and geocoding.
+    // Applies to every route registered after this. Keyed per user when authenticated
+    // (the auth guard's onRequest hook runs before the route-level limiter), else per IP,
+    // so users sharing an office NAT or a reverse proxy don't share a bucket.
+    // Static assets are exempt: a thumbnail grid fetches dozens at once.
     await server.register(rateLimit, {
-        global: false,
+        ...(config.rateLimit ?? DEFAULT_RATE_LIMIT),
+        keyGenerator: (request) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- set by the auth guard
+            const username = (request as any).user?.username as string | undefined;
+            return username ? `user:${username}` : `ip:${request.ip}`;
+        },
+        allowList: (request) => request.url.startsWith('/assets/'),
         errorResponseBuilder: (_request, context) => ({
             statusCode: context.statusCode,
-            error: `Too many attempts, retry in ${context.after}`,
+            error: `Too many requests, retry in ${context.after}`,
             code: 'RATE_LIMITED',
         }),
     });
