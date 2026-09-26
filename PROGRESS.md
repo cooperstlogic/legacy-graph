@@ -95,7 +95,10 @@ LegacyGraph should work as a shared instance where several people can edit, not 
 8. **Account management is manual.** Users are added by hand-editing `auth.yaml` with a bcrypt hash. Add user CRUD for admins and self-service password change.
 9. **Sessions can't be revoked.** Logout only clears the cookie; a JWT stays valid until `session_expiry`. Add a revocation list or per-user token version checked in `verifyToken`, so removing a user or changing a password takes effect immediately.
 
-**Suggested order:** 6 → 1, 2 → 5 → 4 → 7 → 8, 9 (3 alongside 1).
+**Content safety:**
+10. **Stored XSS via story / scrapbook Markdown is unverified.** Story bodies and `scrapbook_md` are rendered by Milkdown Crepe from user-written Markdown. It hasn't been checked whether raw HTML in that Markdown (`<img src=x onerror=…>`, `<script>`, `javascript:` links) is escaped or executed when another user opens the page. On a shared instance that would let one editor run script as another. Add an e2e test that saves such payloads and asserts nothing executes; sanitize or disable raw HTML nodes if it does. (Story excerpts and API responses were checked in the CodeQL triage: excerpts render as escaped React text, and responses are `application/json`.) Consider `X-Content-Type-Options: nosniff` (e.g. `@fastify/helmet`) alongside.
+
+**Suggested order:** 6 → 1, 2 → 10 → 5 → 4 → 7 → 8, 9 (3 alongside 1).
 
 ### Phase 6 — Distribution & Deployment
 

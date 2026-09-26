@@ -10,7 +10,7 @@ import { type Person, PersonSchema, type SlimPerson, toSlimPerson } from '../../
 import type { AppInstance } from '../types';
 import { loadAssetIndex, saveAssetIndex, upsertAssetEntry, extractExifDate, reverseGeocodeExifGps } from '../../core/assetMetaUtils';
 import type { Place } from '../../schemas/PlaceSchema';
-import { isSafePathSegment } from '../../core/safePath';
+import { safeChildPath } from '../../core/safePath';
 
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif', '.heic', '.heif', '.tiff', '.tif', '.svg']);
 const ALLOWED_EXTS = new Set([...IMAGE_EXTS, '.pdf', '.txt', '.md']);
@@ -237,11 +237,12 @@ export async function assetsRoutes(server: FastifyInstance) {
         const { filename } = request.params;
         const { name, description, caption, date, date_taken, location } = request.body;
 
-        if (!isSafePathSegment(filename)) {
+        const assetPath = safeChildPath(assetsDir, filename);
+        if (!assetPath) {
             return reply.status(404).send({ error: 'Asset not found', code: 'ASSET_NOT_FOUND' });
         }
         try {
-            await fs.access(path.join(assetsDir, filename));
+            await fs.access(assetPath);
         } catch {
             return reply.status(404).send({ error: 'Asset not found', code: 'ASSET_NOT_FOUND' });
         }
@@ -286,10 +287,10 @@ export async function assetsRoutes(server: FastifyInstance) {
     }>('/api/assets/:filename', async (request, reply) => {
         const { filename } = request.params;
         const force = request.query.force === 'true';
-        if (!isSafePathSegment(filename)) {
+        const filePath = safeChildPath(assetsDir, filename);
+        if (!filePath) {
             return reply.status(404).send({ error: 'Asset not found', code: 'ASSET_NOT_FOUND' });
         }
-        const filePath = path.join(assetsDir, filename);
 
         try {
             await fs.access(filePath);
@@ -582,12 +583,13 @@ export async function assetsRoutes(server: FastifyInstance) {
         if (!filename || typeof filename !== 'string') {
             return reply.status(400).send({ error: 'filename is required', code: 'VALIDATION_ERROR' });
         }
-        if (!isSafePathSegment(filename)) {
+        const assetPath = safeChildPath(assetsDir, filename);
+        if (!assetPath) {
             return reply.status(400).send({ error: 'Invalid filename', code: 'VALIDATION_ERROR' });
         }
 
         try {
-            await fs.access(path.join(assetsDir, filename));
+            await fs.access(assetPath);
         } catch {
             return reply.status(400).send({ error: 'Asset file not found on disk', code: 'ASSET_NOT_FOUND' });
         }

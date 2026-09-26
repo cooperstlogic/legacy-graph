@@ -1,7 +1,7 @@
 // tests/core/safePath.test.ts
 import { describe, it, expect } from 'vitest';
 import * as path from 'path';
-import { isSafePathSegment, resolveWithinRoot } from '../../src/core/safePath';
+import { isSafePathSegment, resolveWithinRoot, safeChildPath } from '../../src/core/safePath';
 
 describe('isSafePathSegment', () => {
     it.each([
@@ -55,5 +55,28 @@ describe('resolveWithinRoot', () => {
 
     it('rejects the root itself', () => {
         expect(() => resolveWithinRoot(root, '.')).toThrow(/outside/);
+    });
+});
+
+describe('safeChildPath', () => {
+    const dir = path.resolve('/data/root/stories');
+
+    it('returns the resolved path of a single-segment child', () => {
+        expect(safeChildPath(dir, 'my-story.md')).toBe(path.join(dir, 'my-story.md'));
+    });
+
+    it('resolves a relative directory to an absolute path', () => {
+        expect(safeChildPath('data/stories', 'a.md')).toBe(path.resolve('data/stories', 'a.md'));
+    });
+
+    it.each(['', '.', '..', '../x.md', 'a/b.md', '..\\x.md', '/etc/passwd', 'nul\0.md'])(
+        'returns null for %j',
+        (name) => {
+            expect(safeChildPath(dir, name)).toBeNull();
+        },
+    );
+
+    it('returns null for non-strings', () => {
+        expect(safeChildPath(dir, undefined)).toBeNull();
     });
 });

@@ -11,7 +11,7 @@ import { StorySchema, StoryFeedItem, FullStory } from '../../schemas/StorySchema
 import { formatPlaceDisplay, type Place } from '../../schemas/PlaceSchema';
 import type { SlimPerson } from '../../schemas/PersonSchema';
 import type { AppInstance } from '../types';
-import { isSafePathSegment } from '../../core/safePath';
+import { safeChildPath } from '../../core/safePath';
 
 /** Strip `.md` from a filename to get the API-facing story id. */
 function filenameToId(filename: string): string {
@@ -130,6 +130,7 @@ function makePersonNameResolver(graphEngine: AppInstance['appServices']['graphEn
 export async function storiesRoutes(server: FastifyInstance) {
     const { graphEngine, txManager, dataDir } = (server as AppInstance).appServices;
     const storiesDir = path.join(dataDir, 'stories');
+    const assetsDir = path.join(dataDir, 'assets');
 
     // Ensure stories directory exists
     await fs.mkdir(storiesDir, { recursive: true });
@@ -238,8 +239,9 @@ export async function storiesRoutes(server: FastifyInstance) {
 
     server.get<{ Params: { id: string } }>('/api/stories/:id', async (request, reply) => {
         const { id } = request.params;
-        if (!isSafePathSegment(id)) return reply.status(404).send(STORY_NOT_FOUND);
-        const filePath = path.join(storiesDir, `${id}.md`);
+        // null unless `${id}.md` is a single segment inside stories/ (params are URL-decoded)
+        const filePath = safeChildPath(storiesDir, `${id}.md`);
+        if (!filePath) return reply.status(404).send(STORY_NOT_FOUND);
 
         try {
             const raw = await fs.readFile(filePath, 'utf8');
@@ -279,6 +281,10 @@ export async function storiesRoutes(server: FastifyInstance) {
             .replace(/^-+|-+$/g, '')
             .slice(0, 40);
         const id = `${slug}-${nanoid(8)}`;
+        const filePath = safeChildPath(storiesDir, `${id}.md`);
+        if (!filePath) {
+            return reply.status(400).send({ error: 'Invalid story title', code: 'VALIDATION_ERROR' });
+        }
 
         const now = new Date().toISOString();
         const metadata: Record<string, unknown> = {
@@ -298,7 +304,7 @@ export async function storiesRoutes(server: FastifyInstance) {
         try {
             const story = await writeStoryFile(id, metadata, content,
                 (rel, fc) => txManager.writeFile(rel, fc, `story ${id}`));
-            await graphEngine.applyStoryWriteSideEffects(path.join(dataDir, 'stories', `${id}.md`));
+            await graphEngine.applyStoryWriteSideEffects(filePath);
             return reply.status(201).send(story);
         } catch (error: unknown) {
             return reply.status(400).send({ error: 'Invalid story data', code: 'VALIDATION_ERROR', details: error instanceof Error ? error.message : String(error) });
@@ -322,8 +328,9 @@ export async function storiesRoutes(server: FastifyInstance) {
     }>('/api/stories/:id', async (request, reply) => {
         const { id } = request.params;
         const body = request.body;
-        if (!isSafePathSegment(id)) return reply.status(404).send(STORY_NOT_FOUND);
-        const filePath = path.join(storiesDir, `${id}.md`);
+        // null unless `${id}.md` is a single segment inside stories/ (params are URL-decoded)
+        const filePath = safeChildPath(storiesDir, `${id}.md`);
+        if (!filePath) return reply.status(404).send(STORY_NOT_FOUND);
 
         // Load existing
         let existing: { data: Record<string, unknown>; content: string };
@@ -361,7 +368,7 @@ export async function storiesRoutes(server: FastifyInstance) {
         try {
             const story = await writeStoryFile(id, metadata, content,
                 (rel, fc) => txManager.writeFile(rel, fc, `story ${id}`));
-            await graphEngine.applyStoryWriteSideEffects(path.join(dataDir, 'stories', `${id}.md`));
+            await graphEngine.applyStoryWriteSideEffects(filePath);
             return reply.status(200).send(story);
         } catch (error: unknown) {
             return reply.status(400).send({ error: 'Invalid story data', code: 'VALIDATION_ERROR', details: error instanceof Error ? error.message : String(error) });
@@ -372,8 +379,9 @@ export async function storiesRoutes(server: FastifyInstance) {
 
     server.delete<{ Params: { id: string } }>('/api/stories/:id', async (request, reply) => {
         const { id } = request.params;
-        if (!isSafePathSegment(id)) return reply.status(404).send(STORY_NOT_FOUND);
-        const filePath = path.join(storiesDir, `${id}.md`);
+        // null unless `${id}.md` is a single segment inside stories/ (params are URL-decoded)
+        const filePath = safeChildPath(storiesDir, `${id}.md`);
+        if (!filePath) return reply.status(404).send(STORY_NOT_FOUND);
 
         // Read story before deleting so we know which assets to consider for cleanup.
         let storyAssets: string[] = [];
@@ -419,10 +427,11 @@ export async function storiesRoutes(server: FastifyInstance) {
             // Delete asset files that are no longer referenced anywhere
             for (const asset of storyAssets) {
                 // Asset names come from client-supplied frontmatter; never unlink outside assets/
-                if (!isSafePathSegment(asset)) continue;
+                const assetFile = safeChildPath(assetsDir, asset);
+                if (!assetFile) continue;
                 if (!referencedByStories.has(asset) && !referencedByPeople.has(asset)) {
                     try {
-                        await fs.unlink(path.join(dataDir, 'assets', asset));
+                        await fs.unlink(assetFile);
                         await txManager.removeFile(path.join('assets', asset), `asset ${asset}`);
                     } catch { /* already gone or inaccessible — ignore */ }
                 }
@@ -437,11 +446,12 @@ export async function storiesRoutes(server: FastifyInstance) {
 
     server.delete<{ Params: { id: string; filename: string } }>('/api/stories/:id/media/:filename', async (request, reply) => {
         const { id, filename } = request.params;
-        if (!isSafePathSegment(id)) return reply.status(404).send(STORY_NOT_FOUND);
-        if (!isSafePathSegment(filename)) {
+        const filePath = safeChildPath(storiesDir, `${id}.md`);
+        if (!filePath) return reply.status(404).send(STORY_NOT_FOUND);
+        const assetPath = safeChildPath(assetsDir, filename);
+        if (!assetPath) {
             return reply.status(404).send({ error: 'Asset not found', code: 'ASSET_NOT_FOUND' });
         }
-        const filePath = path.join(storiesDir, `${id}.md`);
 
         let existingRaw: string;
         try {
@@ -451,7 +461,6 @@ export async function storiesRoutes(server: FastifyInstance) {
         }
 
         // Remove asset file from disk (best-effort)
-        const assetPath = path.join(dataDir, 'assets', filename);
         try {
             await fs.unlink(assetPath);
             await txManager.removeFile(path.join('assets', filename), `asset ${filename}`);
@@ -468,7 +477,7 @@ export async function storiesRoutes(server: FastifyInstance) {
 
         const story = await writeStoryFile(id, updatedMetadata, content,
             (rel, fc) => txManager.writeFile(rel, fc, `story ${id}`));
-        await graphEngine.applyStoryWriteSideEffects(path.join(dataDir, 'stories', `${id}.md`));
+        await graphEngine.applyStoryWriteSideEffects(filePath);
         return reply.status(200).send(story);
     });
 
@@ -476,8 +485,9 @@ export async function storiesRoutes(server: FastifyInstance) {
 
     server.put<{ Params: { id: string } }>('/api/stories/:id/media', async (request, reply) => {
         const { id } = request.params;
-        if (!isSafePathSegment(id)) return reply.status(404).send(STORY_NOT_FOUND);
-        const filePath = path.join(storiesDir, `${id}.md`);
+        // null unless `${id}.md` is a single segment inside stories/ (params are URL-decoded)
+        const filePath = safeChildPath(storiesDir, `${id}.md`);
+        if (!filePath) return reply.status(404).send(STORY_NOT_FOUND);
 
         // Verify story exists
         let existingRaw: string;
@@ -501,7 +511,6 @@ export async function storiesRoutes(server: FastifyInstance) {
             return reply.status(400).send({ error: 'No file uploaded', code: 'VALIDATION_ERROR' });
         }
 
-        const assetsDir = path.join(dataDir, 'assets');
         await fs.mkdir(assetsDir, { recursive: true });
 
         const ext = path.extname(data.filename) || '.bin';
@@ -522,7 +531,7 @@ export async function storiesRoutes(server: FastifyInstance) {
 
         const story = await writeStoryFile(id, updatedMetadata, content,
             (rel, fc) => txManager.writeFile(rel, fc, `story ${id}`));
-        await graphEngine.applyStoryWriteSideEffects(path.join(dataDir, 'stories', `${id}.md`));
+        await graphEngine.applyStoryWriteSideEffects(filePath);
 
         return reply.status(200).send(story);
     });

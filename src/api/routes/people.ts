@@ -10,7 +10,7 @@ import { Person, PersonSchema, SlimPerson, toSlimPerson } from '../../schemas/Pe
 import { sliceTimeline, type TimelineItem, type PaginatedTimeline } from '../../core/TimelineSlicer';
 import { invalidateComputed } from '../../core/GraphLogic';
 import type { AppInstance } from '../types';
-import { isSafePathSegment } from '../../core/safePath';
+import { safeChildPath } from '../../core/safePath';
 import { loadAssetIndex, saveAssetIndex, upsertAssetEntry, extractExifDate, reverseGeocodeExifGps } from '../../core/assetMetaUtils';
 
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif', '.heic', '.heif', '.tiff', '.tif', '.svg']);
@@ -289,9 +289,11 @@ export async function peopleRoutes(server: FastifyInstance) {
         const { id } = request.params;
         const graph = graphEngine.getGraph();
 
-        // IDs come from people/*.yaml, which can be hand-edited; the id is joined
-        // onto people/ and assets/ below, so it must be a single path segment.
-        if (!isSafePathSegment(id) || !graph.hasNode(id)) {
+        // IDs come from people/*.yaml, which can be hand-edited, and are used as file
+        // and directory names below, so they must be a single path segment.
+        const fullPath = safeChildPath(path.join(dataDir, 'people'), `${id}.yaml`);
+        const personAssetsDir = safeChildPath(path.join(dataDir, 'assets'), id);
+        if (!fullPath || !personAssetsDir || !graph.hasNode(id)) {
             return reply.status(404).send({
                 error: 'Person not found',
                 code: 'PERSON_NOT_FOUND',
@@ -300,7 +302,6 @@ export async function peopleRoutes(server: FastifyInstance) {
 
         // Remove the YAML file
         const relativePath = path.join('people', `${id}.yaml`);
-        const fullPath = path.join(dataDir, relativePath);
         try {
             await fs.unlink(fullPath);
         } catch {
@@ -308,7 +309,6 @@ export async function peopleRoutes(server: FastifyInstance) {
         }
 
         // Remove person's assets directory if it exists
-        const personAssetsDir = path.join(dataDir, 'assets', id);
         try {
             await fs.rm(personAssetsDir, { recursive: true, force: true });
         } catch {
@@ -473,7 +473,8 @@ export async function peopleRoutes(server: FastifyInstance) {
         } as Person;
 
         // assets[] is client-supplied, so membership alone doesn't make the name safe to unlink
-        if (!isSafePathSegment(filename) || !fullPerson.assets.includes(filename)) {
+        const assetPath = safeChildPath(path.join(dataDir, 'assets'), filename);
+        if (!assetPath || !fullPerson.assets.includes(filename)) {
             return reply.status(404).send({
                 error: 'Asset not found',
                 code: 'ASSET_NOT_FOUND'
@@ -543,9 +544,8 @@ export async function peopleRoutes(server: FastifyInstance) {
         }
 
         // No other references — delete the file and clean up assets.yaml
-        const filePath = path.join(dataDir, 'assets', filename);
         try {
-            await fs.unlink(filePath);
+            await fs.unlink(assetPath);
             await txManager.removeFile(path.join('assets', filename), `asset ${filename}`);
         } catch {
             return reply.status(200).send({ fileDeleted: false });

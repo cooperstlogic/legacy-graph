@@ -18,6 +18,20 @@ export function isSafePathSegment(name: unknown): name is string {
 }
 
 /**
+ * Absolute path of `name` inside `dir`, or null if `name` is not a single safe
+ * segment. Use the returned path for file access rather than re-joining `name`:
+ * the resolve-then-`startsWith` check is also the pattern CodeQL recognizes as
+ * a path-injection sanitizer.
+ */
+export function safeChildPath(dir: string, name: unknown): string | null {
+    if (!isSafePathSegment(name)) return null;
+    const base = path.resolve(dir);
+    const target = path.resolve(base, name);
+    if (!target.startsWith(base + path.sep)) return null;
+    return target;
+}
+
+/**
  * Resolve `relativePath` against `root` and return the absolute path.
  * Throws if the result is the root itself or lies outside it.
  */
