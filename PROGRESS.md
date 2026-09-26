@@ -74,6 +74,29 @@ Manual smoke test (post-UX-polish): backend on `:3000`, frontend on `:5173`, Dev
 13. `PersonHistoryTab` as 4th tab in Person Detail Context Panel.
 14. Sidebar dirty indicator (branch name + amber dot).
 
+### Phase 5.9 — Shared Multi-User Instances
+
+LegacyGraph should work as a shared instance where several people can edit, not only as a single user on `localhost`. Per-user and per-IP API rate limiting (with `TRUST_PROXY`) is handled in PR #134. The gaps below were found in the code during that work.
+
+**Exposure & auth defaults:**
+1. **No login by default, open to the network.** `src/index.ts` listens on `0.0.0.0`, and auth only turns on when `_meta/auth.yaml` exists (`loadAuthConfig` in `src/api/middleware/auth.ts`), so anyone on the network can edit or delete everything. Require auth (or refuse to start) unless bound to loopback, or make the bind address explicit (`HOST`, default `127.0.0.1`).
+2. **CORS accepts every origin.** `src/server.ts` registers `@fastify/cors` with `origin: true`, which approves preflights for `DELETE`/`PUT` from any site. With auth off, a page the user visits can modify their tree; with auth on, the `sameSite: 'strict'` cookie blocks it. Default to same-origin, with an allowlist option (`CORS_ORIGINS`).
+3. **Session cookie `secure` only in production.** `src/api/routes/auth.ts` sets `secure: isProduction`. A shared instance served over HTTPS without `NODE_ENV=production` gets non-secure cookies. Tie this to the actual protocol, or document it.
+
+**Authorization:**
+4. **No roles.** Every signed-in user can do everything, including GEDCOM import in replace mode (`src/api/routes/gedcom.ts` deletes every `people/*.yaml` first), `POST /api/system/rebuild`, and permanent asset deletion. Add roles to `AuthUserSchema` (e.g. `admin` / `editor` / `viewer`) and gate destructive routes. Coordinate with Phase 5.6 (guest mode, private persons).
+
+**Concurrent editing:**
+5. **Silent overwrites.** `PUT /api/people/:id` and `PUT /api/stories/:id` merge the patch into the current state with no version check, so the last save wins. Add optimistic concurrency (send `last_modified` / `modified_at` or an ETag with `If-Match`, return `409 CONFLICT` when stale) and a UI to resolve conflicts.
+6. **API-created people lose `scrapbook_md` on the next edit** (data loss, fix first). `GraphEngine.loadHeavyFields()` finds the YAML file through `reverseFileMap`, which is only filled at boot or when the watcher re-reads a file. When self-write dedup matches the watcher's path (an absolute, symlink-free data dir), a person created via `POST /api/people` never gets an entry, so the next `PUT` rebuilds it with `scrapbook_md: ''`, and batch geocode apply skips them. More editors means more of these writes.
+
+**Attribution & accounts:**
+7. **Git history doesn't show who changed what.** `TransactionManager` commits as the git config author or the default `LegacyGraph <legacygraph@localhost>`. Pass the authenticated user into writes and commit as them, or add a `Co-authored-by`/trailer per batch; batched commits that mix users need splitting per author. Coordinate with Phase 5.8 (Git History).
+8. **Account management is manual.** Users are added by hand-editing `auth.yaml` with a bcrypt hash. Add user CRUD for admins and self-service password change.
+9. **Sessions can't be revoked.** Logout only clears the cookie; a JWT stays valid until `session_expiry`. Add a revocation list or per-user token version checked in `verifyToken`, so removing a user or changing a password takes effect immediately.
+
+**Suggested order:** 6 → 1, 2 → 5 → 4 → 7 → 8, 9 (3 alongside 1).
+
 ### Phase 6 — Distribution & Deployment
 
 1. Docker multi-stage build (frontend + backend).
