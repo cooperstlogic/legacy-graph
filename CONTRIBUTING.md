@@ -17,7 +17,7 @@ authoritative, and a feature usually needs a spec change alongside it.
 ## Development setup
 
 ```bash
-git clone https://github.com/dylanwebster/legacy-graph.git
+git clone https://github.com/cooperstlogic/legacy-graph.git
 cd legacy-graph
 npm install
 cd client && npm install && cd ..
@@ -102,7 +102,7 @@ system should do*.
 
 ## Reporting bugs and security issues
 
-Bugs: [open an issue](https://github.com/dylanwebster/legacy-graph/issues/new/choose) with the
+Bugs: [open an issue](https://github.com/cooperstlogic/legacy-graph/issues/new/choose) with the
 version, your platform, what you expected, and what happened.
 
 Security vulnerabilities: **do not** open a public issue — follow [`SECURITY.md`](SECURITY.md).

@@ -200,7 +200,7 @@ person chips and surfaced on the profiles they reference.
 ### Install
 
 ```bash
-git clone https://github.com/dylanwebster/legacy-graph.git
+git clone https://github.com/cooperstlogic/legacy-graph.git
 cd legacy-graph
 npm install
 cd client && npm install && cd ..

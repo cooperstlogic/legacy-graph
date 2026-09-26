@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Please check [`PROGRESS.md`](https://github.com/dylanwebster/legacy-graph/blob/main/PROGRESS.md) first — the roadmap may already
+        Please check [`PROGRESS.md`](https://github.com/cooperstlogic/legacy-graph/blob/main/PROGRESS.md) first — the roadmap may already
         cover this. Features usually need a `SPECIFICATION.md` change alongside the code, so
         the design is worth settling here before anyone writes any.
 
