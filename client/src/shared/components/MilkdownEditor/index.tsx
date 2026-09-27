@@ -10,7 +10,7 @@ import "@milkdown/crepe/theme/common/toolbar.css";
 import "@milkdown/crepe/theme/frame.css";
 import "./MilkdownEditor.css";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { Crepe, CrepeFeature } from "@milkdown/crepe";
 import { editorViewCtx, prosePluginsCtx } from "@milkdown/core";
 import { Plugin, PluginKey } from "@milkdown/prose/state";
@@ -43,6 +43,17 @@ export interface MilkdownEditorProps {
   className?: string;
   readOnly?: boolean;
   enableMentions?: boolean;
+  ref?: Ref<MilkdownEditorHandle>;
+}
+
+export interface MilkdownEditorHandle {
+  /**
+   * The editor's current markdown. `onChange` is debounced by Milkdown, so
+   * anything that saves must read this instead of state fed by `onChange`,
+   * or edits made in the last moments before saving are lost. Null until
+   * the editor has initialised.
+   */
+  getMarkdown: () => string | null;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -335,9 +346,13 @@ export function MilkdownEditor({
   className = "",
   readOnly = false,
   enableMentions = false,
+  ref,
 }: MilkdownEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const crepeRef = useRef<Crepe | null>(null);
+  useImperativeHandle(ref, () => ({
+    getMarkdown: () => crepeRef.current?.getMarkdown() ?? null,
+  }), []);
   // Latest props for editor callbacks that outlive the render they came from
   const onChangeRef = useRef(onChange);
   const onImageUploadRef = useRef(onImageUpload);
