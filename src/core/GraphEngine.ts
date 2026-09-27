@@ -12,7 +12,7 @@ import { GraphCache, GraphCacheFile } from './GraphCache';
 import { HydrationWorkerResult, HydrationWorkerError, HydrationWorkerProgress } from './HydrationWorker';
 import { EventEmitter } from 'events';
 import * as fs from 'fs/promises';
-import yaml from 'js-yaml';
+import { loadYaml, dumpYaml } from './yaml';
 import { PersonSchema, SlimPerson, toSlimPerson, PersonEntry } from '../schemas/PersonSchema';
 import { StorySchema } from '../schemas/StorySchema';
 import { computeAllRelationships, invalidateComputed } from './GraphLogic';
@@ -129,7 +129,7 @@ export class GraphEngine extends EventEmitter {
 
         try {
             const content = await fs.readFile(filePath, 'utf8');
-            const raw = yaml.load(content) as any;
+            const raw = loadYaml(content) as any;
             return {
                 scrapbook_md: raw.scrapbook_md ?? '',
                 _gedcom: raw._gedcom
@@ -478,7 +478,7 @@ export class GraphEngine extends EventEmitter {
                 } else {
                     // Cache miss — parse from YAML + Zod validate
                     const content = await fs.readFile(file, 'utf8');
-                    const raw = yaml.load(content);
+                    const raw = loadYaml(content);
                     const data = PersonSchema.parse(raw);
                     results.push({
                         data: toSlimPerson(data),
@@ -703,7 +703,7 @@ export class GraphEngine extends EventEmitter {
 
         try {
             const content = await fs.readFile(filePath, 'utf8');
-            const rawLoaded = yaml.load(content);
+            const rawLoaded = loadYaml(content);
             const raw: Record<string, unknown> = (rawLoaded && typeof rawLoaded === 'object')
                 ? rawLoaded as Record<string, unknown>
                 : {};
@@ -730,7 +730,7 @@ export class GraphEngine extends EventEmitter {
                 this.registerSelfWrite(filePath);
                 this.registerSelfWrite(newFilePath);
 
-                await fs.writeFile(filePath, yaml.dump(raw));
+                await fs.writeFile(filePath, dumpYaml(raw));
                 await fs.rename(filePath, newFilePath);
                 filePath = newFilePath;
 

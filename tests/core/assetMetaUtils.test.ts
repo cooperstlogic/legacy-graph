@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import sharp from 'sharp';
-import { parseExifDateToISO, extractExifDate, parseExifGpsToPlace, extractExifGps, reverseGeocodeExifGps } from '../../src/core/assetMetaUtils';
+import { parseExifDateToISO, extractExifDate, parseExifGpsToPlace, extractExifGps, reverseGeocodeExifGps, loadAssetIndex } from '../../src/core/assetMetaUtils';
 import type { GeocodingService } from '../../src/core/GeocodingService';
 import type { Place } from '../../src/schemas/PlaceSchema';
 
@@ -142,5 +142,24 @@ describe('reverseGeocodeExifGps', () => {
             create: { width: 8, height: 8, channels: 3, background: { r: 100, g: 150, b: 200 } },
         }).jpeg().toFile(p);
         expect(await reverseGeocodeExifGps(p, makeMockService(null))).toBeNull();
+    });
+});
+
+describe('loadAssetIndex', () => {
+    beforeEach(() => fs.mkdir(path.join(FIXTURES, '_meta'), { recursive: true }));
+    afterEach(() => fs.rm(FIXTURES, { recursive: true, force: true }));
+
+    it('returns an empty index when assets.yaml is missing', async () => {
+        expect(await loadAssetIndex(FIXTURES)).toEqual({});
+    });
+
+    it('returns an empty index when assets.yaml is empty', async () => {
+        await fs.writeFile(path.join(FIXTURES, '_meta', 'assets.yaml'), '');
+        expect(await loadAssetIndex(FIXTURES)).toEqual({});
+    });
+
+    it('returns an empty index when assets.yaml only has comments', async () => {
+        await fs.writeFile(path.join(FIXTURES, '_meta', 'assets.yaml'), '# asset metadata\n');
+        expect(await loadAssetIndex(FIXTURES)).toEqual({});
     });
 });

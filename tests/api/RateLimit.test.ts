@@ -9,7 +9,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import bcrypt from 'bcryptjs';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = 'rate-limit-test-secret-at-least-32-characters';

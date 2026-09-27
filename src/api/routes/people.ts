@@ -3,7 +3,7 @@ import { generatePersonId } from '../../utils/idGenerator';
 import * as nodeFs from 'fs';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import yaml from 'js-yaml';
+import { dumpYaml } from '../../core/yaml';
 import matter from 'gray-matter';
 import { pipeline } from 'stream/promises';
 import { Person, PersonSchema, SlimPerson, toSlimPerson } from '../../schemas/PersonSchema';
@@ -202,7 +202,7 @@ export async function peopleRoutes(server: FastifyInstance) {
             const relativePath = path.join('people', `${newPerson.id}.yaml`);
             const primaryName = newPerson.names[0];
             const label = `${primaryName.first} ${primaryName.last}`;
-            await txManager.writeFile(relativePath, yaml.dump(newPerson), label);
+            await txManager.writeFile(relativePath, dumpYaml(newPerson), label);
 
             const graph = graphEngine.getGraph();
             const slim = toSlimPerson(newPerson);
@@ -264,7 +264,7 @@ export async function peopleRoutes(server: FastifyInstance) {
             const relativePath = path.join('people', `${id}.yaml`);
             const primaryName = merged.names?.[0];
             const label = primaryName ? `${primaryName.first} ${primaryName.last}` : id;
-            await txManager.writeFile(relativePath, yaml.dump(merged), label);
+            await txManager.writeFile(relativePath, dumpYaml(merged), label);
 
             const newSlim = toSlimPerson(merged);
             graph.setNodeAttribute(id, 'data', newSlim);
@@ -423,7 +423,7 @@ export async function peopleRoutes(server: FastifyInstance) {
             const personRelPath = path.join('people', `${id}.yaml`);
             const primaryName = fullPerson.names?.[0];
             const label = primaryName ? `${primaryName.first} ${primaryName.last}` : id;
-            await txManager.writeFile(personRelPath, yaml.dump(fullPerson), label);
+            await txManager.writeFile(personRelPath, dumpYaml(fullPerson), label);
 
             graph.setNodeAttribute(id, 'data', toSlimPerson(fullPerson));
             invalidateComputed(graphEngine.getGraph(), id);
@@ -489,7 +489,7 @@ export async function peopleRoutes(server: FastifyInstance) {
         const relativePath = path.join('people', `${id}.yaml`);
         const primaryName = fullPerson.names?.[0];
         const label = primaryName ? `${primaryName.first} ${primaryName.last}` : id;
-        await txManager.writeFile(relativePath, yaml.dump(fullPerson), label);
+        await txManager.writeFile(relativePath, dumpYaml(fullPerson), label);
 
         const newSlim = toSlimPerson(fullPerson);
         graph.setNodeAttribute(id, 'data', newSlim);
@@ -602,7 +602,7 @@ export async function peopleRoutes(server: FastifyInstance) {
         const relativePath = path.join('people', `${id}.yaml`);
         const primaryName = fullPerson.names?.[0];
         const label = primaryName ? `${primaryName.first} ${primaryName.last}` : id;
-        await txManager.writeFile(relativePath, yaml.dump(fullPerson), label);
+        await txManager.writeFile(relativePath, dumpYaml(fullPerson), label);
 
         const newSlim = toSlimPerson(fullPerson);
         graph.setNodeAttribute(id, 'data', newSlim);

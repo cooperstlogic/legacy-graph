@@ -1,6 +1,6 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 
 type Sex = 'M' | 'F';
 

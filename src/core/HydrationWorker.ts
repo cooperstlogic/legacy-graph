@@ -10,7 +10,7 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import fg from 'fast-glob';
 import pLimit from 'p-limit';
-import yaml from 'js-yaml';
+import { loadYaml } from './yaml';
 import { PersonSchema, SlimPerson, PersonEntry, toSlimPerson } from '../schemas/PersonSchema';
 import { StoryLoader, Story } from './StoryLoader';
 import { GraphCache, GraphCacheFile } from './GraphCache';
@@ -176,7 +176,7 @@ async function loadPeopleIncremental(rootDir: string, cache: GraphCacheFile): Pr
                 fromCache++;
             } else {
                 const content = await fs.readFile(file, 'utf8');
-                const raw = yaml.load(content);
+                const raw = loadYaml(content);
                 const data = PersonSchema.parse(raw);
                 results.push({
                     data: toSlimPerson(data),
