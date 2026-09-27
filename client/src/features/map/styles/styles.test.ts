@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { StyleSpecification, LayerSpecification } from 'maplibre-gl';
+import { validateStyleMin } from '@maplibre/maplibre-gl-style-spec';
 import { dayStyle } from './day';
 import { nightStyle } from './night';
 
@@ -26,6 +27,10 @@ const EXPECTED_SOURCES = [
 ];
 
 describe('basemap styles', () => {
+    it.each([['day', dayStyle], ['night', nightStyle]])('%s style passes style-spec validation', (_name, build) => {
+        expect(validateStyleMin(build()).map((e) => e.message)).toEqual([]);
+    });
+
     it('dayStyle returns a valid StyleSpecification', () => {
         const s = dayStyle();
         expect(s.version).toBe(8);

@@ -36,14 +36,14 @@
 
 ### Dependency Maintenance
 
-- [ ] **`maplibre-gl` 5.24.0 → ≥ 6.4.1** (client). The last open security alert: Dependabot #170, critical, XSS sanitizer bypass in `DOM.sanitize()`. Dependabot PR #127 fails CI; it's a major version, so it needs a migration of the Map View (`client/src/features/map/`) and a re-check of the visual-regression baselines (`npm run test:visual`).
-- [ ] **Dependabot grouped update PRs fail CI**: #130 (45 updates) and #132 (21 updates). Dependencies are drifting. Find the package(s) breaking each group and either fix the code or add an `ignore` entry to `.github/dependabot.yml`, as already done for TypeScript 7 and ESLint 10.
+- [x] **`maplibre-gl` 5.24.0 → 6.11** (client). Closes Dependabot alert #170 (critical, XSS sanitizer bypass in `DOM.sanitize()`); replaces PR #127. v6 is ESM-only (named imports) and can't find its tile worker through a bundler, so `MapView.tsx` registers a Vite-bundled worker with `setWorkerUrl()`. The visual-regression baselines match unchanged, and `tests/e2e/map-view.test.ts` now fails CI if the basemap doesn't load.
+- [ ] **Dependabot grouped update PRs fail CI**: #132 (backend, 21 updates) merged after adapting to js-yaml 5 (`src/core/yaml.ts`). #130 (client, 45 updates) still fails: `eslint-plugin-react-hooks` 7.1 adds React Compiler rules that report 32 errors (refs read during render, memoization that can't be preserved) in `BulkUploadDialog`, `FamilyGraphPanel`, `MapView`, `StoryDetailPage` and `MilkdownEditor`.
 
 ### Phase 5.2 — Map View (`/map`)
 
 Implementation is complete except for the user-flow E2E test. See `SPECIFICATION.md §6.11` for the authoritative spec; this section tracks only what's still open.
 
-- [ ] **5.2.24** — Playwright user-flow E2E (`tests/e2e/map.spec.ts`). **Deferred** until in-flight UX polish settles — writing the suite now would mean rewriting it as the rough edges get fixed. The visual-regression harness (`tests/e2e/map-snapshots.spec.ts`, `npm run test:visual`, 10 baselines across 5 locations × light/dark) already covers basemap rendering.
+- [ ] **5.2.24** — Playwright user-flow E2E (`tests/e2e/map.spec.ts`). **Deferred** until in-flight UX polish settles — writing the suite now would mean rewriting it as the rough edges get fixed. The visual-regression harness (`tests/e2e/map-snapshots.spec.ts`, `npm run test:visual`, 10 baselines across 5 locations × light/dark) already covers basemap rendering, but it needs manually started dev servers and doesn't run in CI. In the meantime, the smoke test `tests/e2e/map-view.test.ts` checks in CI that the map loads without worker errors.
 
 When this lands, cover: pin click → drawer; URL share round-trip; scope switch with a focal set; event-type filter (uncheck `census` → pin count drops); slider drag → heatmap changes; dark-mode toggle → background color changes. Seed via the existing `setupTestDataDir()` helper with a fixture of ≥3 geocoded events.
 

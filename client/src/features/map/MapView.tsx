@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import maplibregl, { Map as MapLibreMap } from 'maplibre-gl';
+import { Map as MapLibreMap, setWorkerUrl, type IControl } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+// maplibre-gl 6 locates its worker via import.meta.url, which doesn't survive
+// bundling; `?worker&url` has Vite emit a self-contained worker chunk instead.
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import type { Layer, PickingInfo } from '@deck.gl/core';
 import { Link, useNavigate, useRouter, useSearch } from '@tanstack/react-router';
@@ -19,6 +22,8 @@ import { EventDrawer } from './EventDrawer';
 import { TopBarActions } from '@/shared/components/layout/TopBarSlotContext';
 import type { MapEvent, MapSearch } from './types';
 import type { EventType } from './eventTypes';
+
+setWorkerUrl(maplibreWorkerUrl);
 
 export function MapView() {
     const theme = useUIStore((s) => s.theme);
@@ -82,7 +87,7 @@ export function MapView() {
     useEffect(() => {
         if (!containerRef.current || mapRef.current) return;
         const style = theme === 'dark' ? nightStyle() : dayStyle();
-        const map = new maplibregl.Map({
+        const map = new MapLibreMap({
             container: containerRef.current,
             style,
             center: [0, 30],
@@ -103,16 +108,16 @@ export function MapView() {
         map.on('zoom', onZoom);
         map.on('zoomend', onZoom);
         const overlay = new MapboxOverlay({ interleaved: false, layers: [] });
-        map.addControl(overlay as unknown as maplibregl.IControl);
+        map.addControl(overlay as unknown as IControl);
         mapRef.current = map;
         overlayRef.current = overlay;
         // Visual-regression test harness hook (tests/e2e/map-snapshots.spec.ts).
         // Exposed unconditionally — harmless in production, avoids env-dependent
         // diverging behaviour between dev and CI snapshot runs.
-        (window as unknown as { __map?: maplibregl.Map }).__map = map;
+        (window as unknown as { __map?: MapLibreMap }).__map = map;
 
         return () => {
-            (window as unknown as { __map?: maplibregl.Map }).__map = undefined;
+            (window as unknown as { __map?: MapLibreMap }).__map = undefined;
             map.remove();
             mapRef.current = null;
             overlayRef.current = null;
