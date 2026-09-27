@@ -1,7 +1,7 @@
 import { ScatterplotLayer, PathLayer } from '@deck.gl/layers';
 import { DataFilterExtension, type DataFilterExtensionProps } from '@deck.gl/extensions';
 import { FilteredHeatmapLayer } from './FilteredHeatmapLayer';
-import type { Layer, PickingInfo } from '@deck.gl/core';
+import type { Layer } from '@deck.gl/core';
 import type { MapEvent, MapScope } from '../types';
 import { TYPE_COLORS, TYPE_WEIGHTS, type EventType } from '../eventTypes';
 import { parseEventYear } from '../timeStore';
@@ -39,11 +39,10 @@ export interface BuildLayersArgs {
     scope: MapScope;
     focalPersonId: string | null;
     theme: 'dark' | 'light';
-    /** Raw pin-click pick info. The caller resolves co-located events via
-     *  pickMultipleObjects — events geocoded to the same place stack at one
-     *  point, and the zoom-8 basemap cap (~600 m/px) means they never spread. */
-    onPinClick: (info: PickingInfo<PreparedEvent>) => void;
 }
+
+/** Id of the pickable pin layer; clicks are handled on the overlay, keyed on this. */
+export const PIN_LAYER_ID = 'events-pins';
 
 // ---- GPU time filter ------------------------------------------------------
 // The time window is applied on the GPU via DataFilterExtension so that
@@ -132,7 +131,7 @@ const EMBER_COLOR_LIGHT: [number, number, number, number] = [180, 95, 30, 150];
  *  add/remove churn that previously tore down the HeatmapLayer framebuffer
  *  at the zoom-3 / zoom-5 thresholds. */
 export function buildMapLayers(args: BuildLayersArgs): Layer[] {
-    const { events, filterRange, personEvents, zoom, theme, onPinClick } = args;
+    const { events, filterRange, personEvents, zoom, theme } = args;
 
     const heatmapOpacity = zoom < 3 ? 1 : zoom < 5 ? (5 - zoom) / 2 : 0;
     const pinOpacity = zoom >= 5 ? 1 : zoom > 3 ? (zoom - 3) / 2 : 0;
@@ -237,7 +236,7 @@ export function buildMapLayers(args: BuildLayersArgs): Layer[] {
     }
 
     layers.push(new ScatterplotLayer<PreparedEvent, DataFilterExtensionProps<PreparedEvent>>({
-        id: 'events-pins',
+        id: PIN_LAYER_ID,
         data: events,
         visible: pinOpacity > 0.02,
         pickable: true,
@@ -249,9 +248,6 @@ export function buildMapLayers(args: BuildLayersArgs): Layer[] {
         getFilterValue: getTimeFilterValue,
         filterRange,
         opacity: pinOpacity,
-        onClick: (info) => {
-            if (info.object) onPinClick(info);
-        },
     }));
 
     return layers;

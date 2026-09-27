@@ -13,66 +13,66 @@ import { createFileRoute } from '@tanstack/react-router'
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as MapRouteImport } from './routes/map'
 
-const SettingsLazyRouteImport = createFileRoute('/settings')()
-const SearchLazyRouteImport = createFileRoute('/search')()
-const ImportLazyRouteImport = createFileRoute('/import')()
-const AssetsLazyRouteImport = createFileRoute('/assets')()
 const IndexLazyRouteImport = createFileRoute('/')()
-const StoriesIndexLazyRouteImport = createFileRoute('/stories/')()
+const AssetsLazyRouteImport = createFileRoute('/assets')()
+const ImportLazyRouteImport = createFileRoute('/import')()
+const SearchLazyRouteImport = createFileRoute('/search')()
+const SettingsLazyRouteImport = createFileRoute('/settings')()
 const PeopleIndexLazyRouteImport = createFileRoute('/people/')()
-const StoriesIdLazyRouteImport = createFileRoute('/stories/$id')()
 const PeopleIdLazyRouteImport = createFileRoute('/people/$id')()
+const StoriesIndexLazyRouteImport = createFileRoute('/stories/')()
+const StoriesIdLazyRouteImport = createFileRoute('/stories/$id')()
 
-const SettingsLazyRoute = SettingsLazyRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => rootRouteImport,
-} as any).lazy(() => import('./routes/settings.lazy').then((d) => d.Route))
-const SearchLazyRoute = SearchLazyRouteImport.update({
-  id: '/search',
-  path: '/search',
-  getParentRoute: () => rootRouteImport,
-} as any).lazy(() => import('./routes/search.lazy').then((d) => d.Route))
-const ImportLazyRoute = ImportLazyRouteImport.update({
-  id: '/import',
-  path: '/import',
-  getParentRoute: () => rootRouteImport,
-} as any).lazy(() => import('./routes/import.lazy').then((d) => d.Route))
-const AssetsLazyRoute = AssetsLazyRouteImport.update({
-  id: '/assets',
-  path: '/assets',
-  getParentRoute: () => rootRouteImport,
-} as any).lazy(() => import('./routes/assets.lazy').then((d) => d.Route))
-const MapRoute = MapRouteImport.update({
-  id: '/map',
-  path: '/map',
-  getParentRoute: () => rootRouteImport,
-} as any).lazy(() => import('./routes/map.lazy').then((d) => d.Route))
 const IndexLazyRoute = IndexLazyRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any).lazy(() => import('./routes/index.lazy').then((d) => d.Route))
-const StoriesIndexLazyRoute = StoriesIndexLazyRouteImport.update({
-  id: '/stories/',
-  path: '/stories/',
+const AssetsLazyRoute = AssetsLazyRouteImport.update({
+  id: '/assets',
+  path: '/assets',
   getParentRoute: () => rootRouteImport,
-} as any).lazy(() => import('./routes/stories/index.lazy').then((d) => d.Route))
+} as any).lazy(() => import('./routes/assets.lazy').then((d) => d.Route))
+const ImportLazyRoute = ImportLazyRouteImport.update({
+  id: '/import',
+  path: '/import',
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() => import('./routes/import.lazy').then((d) => d.Route))
+const MapRoute = MapRouteImport.update({
+  id: '/map',
+  path: '/map',
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() => import('./routes/map.lazy').then((d) => d.Route))
+const SearchLazyRoute = SearchLazyRouteImport.update({
+  id: '/search',
+  path: '/search',
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() => import('./routes/search.lazy').then((d) => d.Route))
+const SettingsLazyRoute = SettingsLazyRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() => import('./routes/settings.lazy').then((d) => d.Route))
 const PeopleIndexLazyRoute = PeopleIndexLazyRouteImport.update({
   id: '/people/',
   path: '/people/',
   getParentRoute: () => rootRouteImport,
 } as any).lazy(() => import('./routes/people/index.lazy').then((d) => d.Route))
-const StoriesIdLazyRoute = StoriesIdLazyRouteImport.update({
-  id: '/stories/$id',
-  path: '/stories/$id',
-  getParentRoute: () => rootRouteImport,
-} as any).lazy(() => import('./routes/stories/$id.lazy').then((d) => d.Route))
 const PeopleIdLazyRoute = PeopleIdLazyRouteImport.update({
   id: '/people/$id',
   path: '/people/$id',
   getParentRoute: () => rootRouteImport,
 } as any).lazy(() => import('./routes/people/$id.lazy').then((d) => d.Route))
+const StoriesIndexLazyRoute = StoriesIndexLazyRouteImport.update({
+  id: '/stories/',
+  path: '/stories/',
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() => import('./routes/stories/index.lazy').then((d) => d.Route))
+const StoriesIdLazyRoute = StoriesIdLazyRouteImport.update({
+  id: '/stories/$id',
+  path: '/stories/$id',
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() => import('./routes/stories/$id.lazy').then((d) => d.Route))
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexLazyRoute
@@ -165,25 +165,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/settings': {
-      id: '/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof SettingsLazyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/search': {
-      id: '/search'
-      path: '/search'
-      fullPath: '/search'
-      preLoaderRoute: typeof SearchLazyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/import': {
-      id: '/import'
-      path: '/import'
-      fullPath: '/import'
-      preLoaderRoute: typeof ImportLazyRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexLazyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/assets': {
@@ -193,6 +179,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AssetsLazyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/import': {
+      id: '/import'
+      path: '/import'
+      fullPath: '/import'
+      preLoaderRoute: typeof ImportLazyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/map': {
       id: '/map'
       path: '/map'
@@ -200,18 +193,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MapRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexLazyRouteImport
+    '/search': {
+      id: '/search'
+      path: '/search'
+      fullPath: '/search'
+      preLoaderRoute: typeof SearchLazyRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/stories/': {
-      id: '/stories/'
-      path: '/stories'
-      fullPath: '/stories/'
-      preLoaderRoute: typeof StoriesIndexLazyRouteImport
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsLazyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/people/': {
@@ -221,18 +214,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PeopleIndexLazyRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/stories/$id': {
-      id: '/stories/$id'
-      path: '/stories/$id'
-      fullPath: '/stories/$id'
-      preLoaderRoute: typeof StoriesIdLazyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/people/$id': {
       id: '/people/$id'
       path: '/people/$id'
       fullPath: '/people/$id'
       preLoaderRoute: typeof PeopleIdLazyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/stories/': {
+      id: '/stories/'
+      path: '/stories'
+      fullPath: '/stories/'
+      preLoaderRoute: typeof StoriesIndexLazyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/stories/$id': {
+      id: '/stories/$id'
+      path: '/stories/$id'
+      fullPath: '/stories/$id'
+      preLoaderRoute: typeof StoriesIdLazyRouteImport
       parentRoute: typeof rootRouteImport
     }
   }

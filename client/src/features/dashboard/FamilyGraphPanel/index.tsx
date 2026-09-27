@@ -70,11 +70,11 @@ export function FamilyGraphPanel() {
 
     // ── Position + zoom persistence (read initial values from dsState) ────
     // Capture mount-time snapshot so zoom restore / guard comparisons are stable
-    const initialState = useRef({
+    const [initialState] = useState(() => ({
         positions: dsState.positions,
         zoom: dsState.zoom,
         rootPersonId: dsState.rootPersonId,
-    }).current;
+    }));
     const savedPositionsRef = useRef<Record<string, { x: number; y: number }>>(
         initialState.positions
     );
@@ -87,7 +87,6 @@ export function FamilyGraphPanel() {
     // default-position flash before the restore setTimeout fires.
     const [forceGraphReady, setForceGraphReady] = useState(!initialState.zoom);
     const dimsRef = useRef(dims);
-    dimsRef.current = dims;
 
     // ── Root person state ──────────────────────────────────────────────────
     const [rootPersonId, setRootPersonId] = useState<string | null>(initialState.rootPersonId);
@@ -120,22 +119,30 @@ export function FamilyGraphPanel() {
     const zoomLevelRef = useRef<number>(initialState.zoom?.k ?? 1);
 
     // ── Stable graph data with positions + effectiveBirthYear + fixed X ───
-    const stableGraphData = useMemo(() => {
-        if (!graphData) return null;
-        const effectiveYears = computeEffectiveBirthYears(graphData.nodes, graphData.links);
-        const pos = savedPositionsRef.current;
+    const effectiveYears = useMemo(
+        () => (graphData ? computeEffectiveBirthYears(graphData.nodes, graphData.links) : null),
+        [graphData],
+    );
 
-        // Compute year bounds for X positioning
-        const years = [...effectiveYears.values()];
-        let midYear = 1900;
-        if (years.length > 0) {
-            const minYear = Math.min(...years);
-            const maxYear = Math.max(...years);
-            midYear = (minYear + maxYear) / 2;
-            yearBoundsRef.current = { minYear, maxYear, midYear };
-        }
+    // Year bounds for X positioning (null when no node has a birth year)
+    const yearBounds = useMemo(() => {
+        const years = [...(effectiveYears?.values() ?? [])];
+        if (years.length === 0) return null;
+        const minYear = Math.min(...years);
+        const maxYear = Math.max(...years);
+        return { minYear, maxYear, midYear: (minYear + maxYear) / 2 };
+    }, [effectiveYears]);
+
+    const stableGraphData = useMemo(() => {
+        if (!graphData || !effectiveYears) return null;
+        // Deliberately read, not a dependency: saved positions change on every
+        // drag, and rebuilding nodes then would restart the layout. They are
+        // only needed to seed nodes when the graph data itself changes.
+        const pos = savedPositionsRef.current;
+        const midYear = yearBounds?.midYear ?? 1900;
 
         return {
+            // eslint-disable-next-line react-hooks/refs -- see `pos` above
             nodes: graphData.nodes.map((n) => {
                 const saved = pos[n.id];
                 const effectiveBirthYear = effectiveYears.get(n.id) ?? null;
@@ -162,11 +169,17 @@ export function FamilyGraphPanel() {
                 };
             }),
         };
-    }, [graphData]);
+    }, [graphData, effectiveYears, yearBounds]);
 
-    // Keep a ref to stableGraphData so stable callbacks can read it
+    // Latest values for stable callbacks and D3 effects. Declared before the
+    // effects that read them, so they are current by the time those run.
     const stableGraphDataRef = useRef(stableGraphData);
-    stableGraphDataRef.current = stableGraphData;
+    useEffect(() => {
+        stableGraphDataRef.current = stableGraphData;
+        // Keep the last known bounds when the new data has no birth years
+        if (yearBounds) yearBoundsRef.current = yearBounds;
+        dimsRef.current = dims;
+    }, [stableGraphData, yearBounds, dims]);
 
     const graphNodeMap = useMemo(
         () => new Map((stableGraphData?.nodes ?? []).map(n => [String(n.id), n as GraphNodeData])),

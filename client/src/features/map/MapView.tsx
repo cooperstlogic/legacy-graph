@@ -13,7 +13,7 @@ import { useMapEvents } from './api';
 import { dayStyle } from './styles/day';
 import { nightStyle } from './styles/night';
 import { useMapPrefsStore } from './prefsStore';
-import { buildMapLayers, prepareEvents, timeFilterRange, type PreparedEvent } from './layers/buildMapLayers';
+import { buildMapLayers, prepareEvents, timeFilterRange, PIN_LAYER_ID, type PreparedEvent } from './layers/buildMapLayers';
 import { BASEMAP_MAX_ZOOM } from './constants';
 import { useTimeStore, initWindowForExtent, seedWindowFromUrl, computeYearHistogram } from './timeStore';
 import { TimeSlider } from './TimeSlider';
@@ -213,10 +213,6 @@ export function MapView() {
     // pans/zooms in the high-zoom range — no setProps, no deck.gl diff work.
     const layerZoom = useMemo(() => Math.min(zoom, 5), [zoom]);
 
-    // Defer `onPinClick` declaration: declared below as a useCallback. We
-    // build layers off a stable click ref so the layer rebuild deps stay tight.
-    const clickRef = useRef<(info: PickingInfo<PreparedEvent>) => void>(() => {});
-
     const layers = useMemo<Layer[]>(() => {
         return buildMapLayers({
             events: eventsForLayers,
@@ -226,7 +222,6 @@ export function MapView() {
             scope,
             focalPersonId,
             theme,
-            onPinClick: (info) => clickRef.current(info),
         });
     }, [eventsForLayers, filterRange, personEvents, layerZoom, scope, focalPersonId, theme]);
 
@@ -298,7 +293,7 @@ export function MapView() {
                 x: info.x,
                 y: info.y,
                 radius: 4,
-                layerIds: ['events-pins'],
+                layerIds: [PIN_LAYER_ID],
                 depth: 24,
             });
             const seen = new Map<string, MapEvent>();
@@ -316,8 +311,14 @@ export function MapView() {
         }
     }, [onSelectEvent]);
 
+    // Registered on the overlay (not the pin layer) so layers stay pure data
+    // and only rebuild when what they draw changes.
     useEffect(() => {
-        clickRef.current = onPinClick;
+        overlayRef.current?.setProps({
+            onClick: (info: PickingInfo) => {
+                if (info.layer?.id === PIN_LAYER_ID && info.object) onPinClick(info as PickingInfo<PreparedEvent>);
+            },
+        });
     }, [onPinClick]);
 
     // Write current state back to the URL (debounced). Keeps share/reload identical.

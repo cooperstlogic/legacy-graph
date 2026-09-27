@@ -35,7 +35,6 @@ const baseArgs = {
     scope: 'all' as const,
     focalPersonId: null,
     theme: 'light' as const,
-    onPinClick: () => {},
 };
 
 describe('GPU time filter', () => {
