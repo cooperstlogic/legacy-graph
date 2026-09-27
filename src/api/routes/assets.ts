@@ -379,6 +379,8 @@ export async function assetsRoutes(server: FastifyInstance) {
                     if (Array.isArray(parsed.data.assets)) {
                         parsed.data.assets = (parsed.data.assets as string[]).filter(a => a !== filename);
                         await txManager.writeFile(path.join('stories', `${storyId}.md`), matter.stringify(parsed.content, parsed.data), `story ${storyId}`);
+                        // The watcher skips self-writes, so update the story node here
+                        await graphEngine.applyStoryWriteSideEffects(storyFilePath);
                     }
                 } catch { /* skip if story missing */ }
             }

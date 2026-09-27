@@ -65,7 +65,7 @@ export class GraphEngine extends EventEmitter {
         return this._cacheWrittenAt;
     }
 
-    private fileMap: Map<string, string> = new Map(); // FilePath -> PersonID
+    private fileMap: Map<string, string> = new Map(); // Canonical FilePath -> PersonID
     private reverseFileMap: Map<string, string> = new Map(); // PersonID -> FilePath
     private selfWriteMap: Map<string, number> = new Map(); // Canonical path -> expiry timestamp
     private canonicalDirCache: Map<string, string> = new Map(); // Directory as given -> realpath
@@ -76,12 +76,13 @@ export class GraphEngine extends EventEmitter {
     private watcherSuspendedUntil = 0; // grace period after suspension ends
 
     /**
-     * Canonical form of a file path for self-write keys. The watcher reports real
-     * paths, while writers join paths onto the configured data dir, which may be
-     * relative or pass through a symlink (macOS /var → /private/var). The parent
-     * directory is resolved rather than the file so deleted files still map.
+     * Canonical form of a file path, used to key self-writes and fileMap. The watcher
+     * reports real paths, while writers and hydration join paths onto the configured
+     * data dir, which may be relative (DATA_DIR=./data) or pass through a symlink
+     * (macOS /var → /private/var). The parent directory is resolved rather than the
+     * file so deleted files still map.
      */
-    private selfWriteKey(filePath: string): string {
+    private canonicalPath(filePath: string): string {
         const dir = path.dirname(filePath);
         let canonicalDir = this.canonicalDirCache.get(dir);
         if (canonicalDir === undefined) {
@@ -102,14 +103,14 @@ export class GraphEngine extends EventEmitter {
      * Entries expire after ttlMs (default 10000ms) to prevent memory leaks.
      */
     public registerSelfWrite(absolutePath: string, ttlMs: number = 10000): void {
-        this.selfWriteMap.set(this.selfWriteKey(absolutePath), Date.now() + ttlMs);
+        this.selfWriteMap.set(this.canonicalPath(absolutePath), Date.now() + ttlMs);
     }
 
     /**
      * Check if a file path is in the self-write set (not expired).
      */
     public hasSelfWrite(absolutePath: string): boolean {
-        const key = this.selfWriteKey(absolutePath);
+        const key = this.canonicalPath(absolutePath);
         const expiry = this.selfWriteMap.get(key);
         if (expiry === undefined) return false;
         if (Date.now() > expiry) {
@@ -124,7 +125,7 @@ export class GraphEngine extends EventEmitter {
      * Returns true if the entry was consumed, false if not found or expired.
      */
     public consumeSelfWrite(absolutePath: string): boolean {
-        const key = this.selfWriteKey(absolutePath);
+        const key = this.canonicalPath(absolutePath);
         const expiry = this.selfWriteMap.get(key);
         if (expiry === undefined) return false;
         this.selfWriteMap.delete(key);
@@ -137,11 +138,13 @@ export class GraphEngine extends EventEmitter {
      * and loadHeavyFields() can't find its scrapbook_md or _gedcom.
      */
     public registerPersonFile(personId: string, filePath: string): void {
+        const key = this.canonicalPath(filePath);
         const previous = this.reverseFileMap.get(personId);
-        if (previous !== undefined && previous !== filePath) {
-            this.fileMap.delete(previous);
+        if (previous !== undefined) {
+            const previousKey = this.canonicalPath(previous);
+            if (previousKey !== key) this.fileMap.delete(previousKey);
         }
-        this.fileMap.set(filePath, personId);
+        this.fileMap.set(key, personId);
         this.reverseFileMap.set(personId, filePath);
     }
 
@@ -382,7 +385,7 @@ export class GraphEngine extends EventEmitter {
         const slimPeople: SlimPerson[] = [];
         peopleWithMtime.forEach(({ data: slim, bio, filePath, wasParsed }) => {
             this.graph.addNode(slim.id, { type: 'person', data: slim });
-            this.fileMap.set(filePath, slim.id);
+            this.fileMap.set(this.canonicalPath(filePath), slim.id);
             this.reverseFileMap.set(slim.id, filePath);
             slimPeople.push(slim);
 
@@ -776,7 +779,7 @@ export class GraphEngine extends EventEmitter {
             const slim = toSlimPerson(newPerson);
 
             // Handle ID changes (rare): treat as remove old + add new
-            const existingId = this.fileMap.get(filePath);
+            const existingId = this.fileMap.get(this.canonicalPath(filePath));
             if (existingId && existingId !== newPerson.id) {
                 this.removeNode(existingId);
             }
@@ -793,7 +796,7 @@ export class GraphEngine extends EventEmitter {
             } else {
                 this.graph.addNode(newPerson.id, { type: 'person', data: slim });
             }
-            this.fileMap.set(filePath, newPerson.id);
+            this.fileMap.set(this.canonicalPath(filePath), newPerson.id);
             this.reverseFileMap.set(newPerson.id, filePath);
 
             this.applyWriteSideEffects(newPerson.id, oldData, slim, newPerson.scrapbook_md || '');
@@ -897,10 +900,11 @@ export class GraphEngine extends EventEmitter {
             return;
         }
 
-        const id = this.fileMap.get(filePath);
+        const key = this.canonicalPath(filePath);
+        const id = this.fileMap.get(key);
         if (id) {
             this.removeNode(id);
-            this.fileMap.delete(filePath);
+            this.fileMap.delete(key);
             this.reverseFileMap.delete(id);
             console.log(`[GraphEngine] Hot-removed ${id}`);
         }
