@@ -10,7 +10,7 @@ import {
     DialogDescription, DialogFooter,
 } from '@/shared/ui/dialog';
 import { PersonChip } from '@/shared/components/PersonChip';
-import { MilkdownEditor } from '@/shared/components/MilkdownEditor';
+import { MilkdownEditor, type MilkdownEditorHandle } from '@/shared/components/MilkdownEditor';
 import { SmartDateInput, parseToISO } from '@/shared/components/SmartDateInput';
 import { Button } from '@/shared/ui/button';
 import { Badge } from '@/shared/ui/badge';
@@ -155,6 +155,7 @@ export function StoryDetailPage({ id }: { id: string }) {
     const [isSaving, setIsSaving] = useState(false);
 
     const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const editorRef = useRef<MilkdownEditorHandle>(null);
 
     // When uploading images on a new (unsaved) story, or when auto-saving a new
     // story for the first time, we silently create it to get an ID.
@@ -274,11 +275,13 @@ export function StoryDetailPage({ id }: { id: string }) {
         }
         setIsSaving(true);
         try {
-            const mentionedPeople = extractMentionIds(content);
+            // `content` trails the editor by Milkdown's onChange debounce
+            const latestContent = editorRef.current?.getMarkdown() ?? content;
+            const mentionedPeople = extractMentionIds(latestContent);
             const isoDate = parseToISO(fm.date) || undefined;
             const payload: UpdateStoryInput = {
                 title: fm.title,
-                content,
+                content: latestContent,
                 date: isoDate,
                 place: fm.place || undefined,
                 people: mentionedPeople,
@@ -881,6 +884,7 @@ export function StoryDetailPage({ id }: { id: string }) {
                     <div className="border-t border-b border-border py-6">
                         {(isEditMode || content) && (
                             <MilkdownEditor
+                                ref={editorRef}
                                 key={`editor-${id}-${story ? 'loaded' : 'unloaded'}-${editorResetKey}`}
                                 content={content}
                                 onChange={(md) => { setContent(md); setIsDirty(true); }}

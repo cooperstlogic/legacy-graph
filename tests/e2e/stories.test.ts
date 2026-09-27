@@ -22,9 +22,6 @@ test.describe('Stories', () => {
         await editor.click();
         await page.keyboard.type('Written in the new-story editor');
         await expect(editor).toContainText('Written in the new-story editor');
-        // Known bug (PROGRESS.md): the editor's onChange is debounced, so saving
-        // right after the last keystroke sends stale content. Let it flush.
-        await page.waitForTimeout(1000);
         await page.getByRole('button', { name: 'Create' }).click();
 
         await page.waitForURL(/\/stories\/(?!new)[^/?]+$/, { timeout: 10_000 });
@@ -61,6 +58,21 @@ test.describe('Stories', () => {
             await expect.poll(async () => (await getStory(request, id)).content, { timeout: 10_000 })
                 .toContain('plus an autosaved line');
             await expect(editor).toContainText('Original body plus an autosaved line');
+        });
+
+        test('saving right after typing keeps the latest edits', async ({ page, request }) => {
+            await page.goto(`/stories/${id}`);
+            await page.getByRole('button', { name: 'Edit Story' }).click();
+            await page.waitForURL(/mode=edit/);
+
+            const editor = page.locator('[contenteditable="true"]').first();
+            await editor.click();
+            await page.keyboard.press('End');
+            await page.keyboard.type(' and a last-second line');
+            await page.getByRole('button', { name: 'Save' }).click();
+
+            await expect(page).not.toHaveURL(/mode=edit/, { timeout: 10_000 });
+            expect((await getStory(request, id)).content).toContain('Original body and a last-second line');
         });
 
         test('discard restores the story as it was before editing', async ({ page, request }) => {

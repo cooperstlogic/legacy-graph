@@ -33,7 +33,7 @@ import {
     Pencil, X, Check, UserPlus, Star, ZoomIn, Upload, Trash2, Crop, Link2,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { MilkdownEditor } from '@/shared/components/MilkdownEditor';
+import { MilkdownEditor, type MilkdownEditorHandle } from '@/shared/components/MilkdownEditor';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { PersonTimeline } from './components/PersonTimeline';
@@ -73,6 +73,7 @@ export function PersonDetailPage({ id }: { id: string }) {
     // Notebook editing state
     const [editingNotebook, setEditingNotebook] = useState(false);
     const [notebookContent, setNotebookContent] = useState('');
+    const notebookEditorRef = useRef<MilkdownEditorHandle>(null);
 
     // Drag state for asset upload
     const [isDragOver, setIsDragOver] = useState(false);
@@ -229,8 +230,10 @@ export function PersonDetailPage({ id }: { id: string }) {
     };
 
     const saveNotebook = () => {
+        // notebookContent trails the editor by Milkdown's onChange debounce
+        const latest = notebookEditorRef.current?.getMarkdown() ?? notebookContent;
         updatePerson.mutate(
-            { id, updates: { scrapbook_md: notebookContent } },
+            { id, updates: { scrapbook_md: latest } },
             {
                 onSuccess: () => toast.success('Notebook saved.'),
                 onError: () => toast.error('Failed to save notebook.'),
@@ -771,6 +774,7 @@ export function PersonDetailPage({ id }: { id: string }) {
                                 )}
                             </div>
                             <MilkdownEditor
+                                ref={notebookEditorRef}
                                 content={editingNotebook ? notebookContent : (person.scrapbook_md ?? '')}
                                 onChange={setNotebookContent}
                                 readOnly={!editingNotebook}
