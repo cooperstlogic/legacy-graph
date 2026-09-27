@@ -12,6 +12,7 @@ import { GraphCache, GraphCacheFile } from './GraphCache';
 import { HydrationWorkerResult, HydrationWorkerError, HydrationWorkerProgress } from './HydrationWorker';
 import { EventEmitter } from 'events';
 import * as fs from 'fs/promises';
+import { realpathSync } from 'fs';
 import { loadYaml, dumpYaml } from './yaml';
 import { PersonSchema, SlimPerson, toSlimPerson, PersonEntry } from '../schemas/PersonSchema';
 import { StorySchema } from '../schemas/StorySchema';
@@ -66,7 +67,8 @@ export class GraphEngine extends EventEmitter {
 
     private fileMap: Map<string, string> = new Map(); // FilePath -> PersonID
     private reverseFileMap: Map<string, string> = new Map(); // PersonID -> FilePath
-    private selfWriteMap: Map<string, number> = new Map(); // AbsolutePath -> expiry timestamp
+    private selfWriteMap: Map<string, number> = new Map(); // Canonical path -> expiry timestamp
+    private canonicalDirCache: Map<string, string> = new Map(); // Directory as given -> realpath
 
     private watcherEventCount = 0;
     private watcherWindowStart = 0;
@@ -74,22 +76,44 @@ export class GraphEngine extends EventEmitter {
     private watcherSuspendedUntil = 0; // grace period after suspension ends
 
     /**
+     * Canonical form of a file path for self-write keys. The watcher reports real
+     * paths, while writers join paths onto the configured data dir, which may be
+     * relative or pass through a symlink (macOS /var → /private/var). The parent
+     * directory is resolved rather than the file so deleted files still map.
+     */
+    private selfWriteKey(filePath: string): string {
+        const dir = path.dirname(filePath);
+        let canonicalDir = this.canonicalDirCache.get(dir);
+        if (canonicalDir === undefined) {
+            try {
+                canonicalDir = realpathSync(dir);
+                this.canonicalDirCache.set(dir, canonicalDir);
+            } catch {
+                // Directory doesn't exist (yet): don't cache the fallback
+                canonicalDir = path.resolve(dir);
+            }
+        }
+        return path.join(canonicalDir, path.basename(filePath));
+    }
+
+    /**
      * Register a file path as written by the application itself.
      * The watcher will skip hot-patching for this file on the next event.
      * Entries expire after ttlMs (default 10000ms) to prevent memory leaks.
      */
     public registerSelfWrite(absolutePath: string, ttlMs: number = 10000): void {
-        this.selfWriteMap.set(absolutePath, Date.now() + ttlMs);
+        this.selfWriteMap.set(this.selfWriteKey(absolutePath), Date.now() + ttlMs);
     }
 
     /**
      * Check if a file path is in the self-write set (not expired).
      */
     public hasSelfWrite(absolutePath: string): boolean {
-        const expiry = this.selfWriteMap.get(absolutePath);
+        const key = this.selfWriteKey(absolutePath);
+        const expiry = this.selfWriteMap.get(key);
         if (expiry === undefined) return false;
         if (Date.now() > expiry) {
-            this.selfWriteMap.delete(absolutePath);
+            this.selfWriteMap.delete(key);
             return false;
         }
         return true;
@@ -100,14 +124,25 @@ export class GraphEngine extends EventEmitter {
      * Returns true if the entry was consumed, false if not found or expired.
      */
     public consumeSelfWrite(absolutePath: string): boolean {
-        const expiry = this.selfWriteMap.get(absolutePath);
+        const key = this.selfWriteKey(absolutePath);
+        const expiry = this.selfWriteMap.get(key);
         if (expiry === undefined) return false;
-        if (Date.now() > expiry) {
-            this.selfWriteMap.delete(absolutePath);
-            return false;
+        this.selfWriteMap.delete(key);
+        return Date.now() <= expiry;
+    }
+
+    /**
+     * Record the source YAML for a person the API just wrote. The watcher skips
+     * self-writes, so without this a person created via the API has no file mapping
+     * and loadHeavyFields() can't find its scrapbook_md or _gedcom.
+     */
+    public registerPersonFile(personId: string, filePath: string): void {
+        const previous = this.reverseFileMap.get(personId);
+        if (previous !== undefined && previous !== filePath) {
+            this.fileMap.delete(previous);
         }
-        this.selfWriteMap.delete(absolutePath);
-        return true;
+        this.fileMap.set(filePath, personId);
+        this.reverseFileMap.set(personId, filePath);
     }
 
     /**
