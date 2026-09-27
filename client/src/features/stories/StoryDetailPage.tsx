@@ -1,5 +1,5 @@
 import {
-    useState, useEffect, useRef, useCallback,
+    useState, useEffect, useEffectEvent, useRef, useCallback,
 } from 'react';
 import { useNavigate, useSearch as useRouterSearch, Link, useBlocker } from '@tanstack/react-router';
 import { useStory, useCreateStory, useUpdateStory, useUploadStoryMedia, useDeleteStoryMedia, useDeleteStory } from '@/shared/api/hooks';
@@ -155,8 +155,6 @@ export function StoryDetailPage({ id }: { id: string }) {
     const [isSaving, setIsSaving] = useState(false);
 
     const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const isEditModeRef = useRef(isEditMode);
-    isEditModeRef.current = isEditMode;
 
     // When uploading images on a new (unsaved) story, or when auto-saving a new
     // story for the first time, we silently create it to get an ID.
@@ -227,26 +225,32 @@ export function StoryDetailPage({ id }: { id: string }) {
                 .finally(() => storiesApi.deleteStory(draftId).catch(() => {}));
         };
     }, []); // Intentionally empty: runs only on unmount. storiesApi is a stable module singleton; refs are stable.
+    // Latest fm/content for async callbacks that read them after an await.
     const fmRef = useRef(fm);
-    fmRef.current = fm;
     const contentRef2 = useRef(content);
-    contentRef2.current = content;
+    useEffect(() => {
+        fmRef.current = fm;
+        contentRef2.current = content;
+    }, [fm, content]);
 
     // Sync story data → local state on load
     // In edit mode, skip content/dirty reset so in-progress edits aren't clobbered
-    // (e.g. after auto-save triggers a cache update)
-    useEffect(() => {
-        if (!story) return;
+    // (e.g. after auto-save triggers a cache update). An effect event, so toggling
+    // edit mode doesn't itself re-sync.
+    const syncFromStory = useEffectEvent((loaded: NonNullable<typeof story>) => {
         setFm({
-            title: story.metadata.title ?? '',
-            date: story.metadata.date ?? '',
-            place: story.metadata.place,
-            isPrivate: story.metadata.private ?? false,
+            title: loaded.metadata.title ?? '',
+            date: loaded.metadata.date ?? '',
+            place: loaded.metadata.place,
+            isPrivate: loaded.metadata.private ?? false,
         });
-        if (!isEditModeRef.current) {
-            setContent(story.content ?? '');
+        if (!isEditMode) {
+            setContent(loaded.content ?? '');
             setIsDirty(false);
         }
+    });
+    useEffect(() => {
+        if (story) syncFromStory(story);
     }, [story]);
 
     // Auto-save (3s debounce) while in edit mode — covers both new and existing stories.
@@ -262,7 +266,7 @@ export function StoryDetailPage({ id }: { id: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [content, fm, isDirty]);
 
-    const doSave = useCallback(async (navigateAfter = true) => {
+    const doSave = async (navigateAfter = true) => {
         if (!fm.title.trim()) { toast.error('Title is required'); return; }
         if (fm.date && !parseToISO(fm.date)) {
             toast.error('Invalid date — try "15 Jun 1944" or "1944-06-15"');
@@ -314,11 +318,11 @@ export function StoryDetailPage({ id }: { id: string }) {
         } finally {
             setIsSaving(false);
         }
-    }, [fm, content, isNew, id, createStory, updateStory, navigate]);
+    };
 
     // ── Discard ───────────────────────────────────────────────────────────────
 
-    const handleDiscard = useCallback(async () => {
+    const handleDiscard = async () => {
         setShowDiscardConfirm(false);
         if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
 
@@ -379,7 +383,7 @@ export function StoryDetailPage({ id }: { id: string }) {
                 navigate({ to: '/stories/$id', params: { id }, search: {} });
             }
         }
-    }, [isNew, id, updateStory, navigate, blocker]);
+    };
 
     // ── Image upload handler ──────────────────────────────────────────────────
 

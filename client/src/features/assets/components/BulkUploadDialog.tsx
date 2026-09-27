@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { uploadGalleryAssets, updateAssetMeta, linkAssetToPerson } from '@/shared/api/client';
 import type { AssetMetadata } from '@/shared/api/client';
 import type { Place } from '@/shared/api/people';
@@ -36,19 +36,8 @@ export function BulkUploadDialog({ open, onOpenChange, onSuccess }: BulkUploadDi
     const [dragActive, setDragActive] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const previewUrls = useRef<Map<File, string>>(new Map());
-
-    const getPreviewUrl = useCallback((file: File): string | null => {
-        if (!file.type.startsWith('image/')) return null;
-        if (!previewUrls.current.has(file)) {
-            previewUrls.current.set(file, URL.createObjectURL(file));
-        }
-        return previewUrls.current.get(file) ?? null;
-    }, []);
 
     const resetState = () => {
-        for (const url of previewUrls.current.values()) URL.revokeObjectURL(url);
-        previewUrls.current.clear();
         setPendingFiles([]);
         setDescription('');
         setDateVal('');
@@ -68,12 +57,7 @@ export function BulkUploadDialog({ open, onOpenChange, onSuccess }: BulkUploadDi
     };
 
     const removeFile = (index: number) => {
-        setPendingFiles(prev => {
-            const file = prev[index];
-            const url = previewUrls.current.get(file);
-            if (url) { URL.revokeObjectURL(url); previewUrls.current.delete(file); }
-            return prev.filter((_, i) => i !== index);
-        });
+        setPendingFiles(prev => prev.filter((_, i) => i !== index));
     };
 
     const handleDrop = (e: React.DragEvent) => {
@@ -187,16 +171,9 @@ export function BulkUploadDialog({ open, onOpenChange, onSuccess }: BulkUploadDi
                     {pendingFiles.length > 0 && (
                         <div className="space-y-1.5">
                             {displayFiles.map((file, i) => {
-                                const preview = getPreviewUrl(file);
                                 return (
                                     <div key={`${file.name}-${file.size}-${i}`} className="flex items-center gap-2 rounded-md border border-border bg-muted/30 p-2">
-                                        {preview ? (
-                                            <img src={preview} alt={file.name} className="h-10 w-10 rounded object-cover shrink-0" />
-                                        ) : (
-                                            <div className="h-10 w-10 rounded bg-muted flex items-center justify-center shrink-0">
-                                                <FileText className="h-5 w-5 text-muted-foreground" />
-                                            </div>
-                                        )}
+                                        <FileThumbnail file={file} />
                                         <div className="flex-1 min-w-0">
                                             <p className="text-xs font-medium truncate">{file.name}</p>
                                             <Badge variant="secondary" className="text-[9px] px-1 py-0">{ext(file)}</Badge>
@@ -326,5 +303,57 @@ export function BulkUploadDialog({ open, onOpenChange, onSuccess }: BulkUploadDi
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+    );
+}
+
+const THUMB_CSS_PX = 40;
+
+/**
+ * Image files are decoded with createImageBitmap and painted onto a canvas
+ * (centre-cropped square), so no URL for the user's file is ever created or
+ * rendered. Formats the browser can't decode fall back to the file icon.
+ */
+function FileThumbnail({ file }: { file: File }) {
+    const isImage = file.type.startsWith('image/');
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const [drawn, setDrawn] = useState(false);
+
+    useEffect(() => {
+        setDrawn(false);
+        if (!isImage) return;
+        let cancelled = false;
+        createImageBitmap(file)
+            .then((bitmap) => {
+                const canvas = canvasRef.current;
+                const ctx = canvas?.getContext('2d');
+                if (cancelled || !canvas || !ctx) { bitmap.close(); return; }
+                const size = Math.round(THUMB_CSS_PX * window.devicePixelRatio);
+                canvas.width = size;
+                canvas.height = size;
+                const side = Math.min(bitmap.width, bitmap.height);
+                ctx.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, size, size);
+                bitmap.close();
+                setDrawn(true);
+            })
+            .catch(() => { /* undecodable image: keep the icon */ });
+        return () => { cancelled = true; };
+    }, [file, isImage]);
+
+    return (
+        <>
+            {isImage && (
+                <canvas
+                    ref={canvasRef}
+                    role="img"
+                    aria-label={file.name}
+                    className={`h-10 w-10 rounded shrink-0 ${drawn ? '' : 'hidden'}`}
+                />
+            )}
+            {!drawn && (
+                <div className="h-10 w-10 rounded bg-muted flex items-center justify-center shrink-0">
+                    <FileText className="h-5 w-5 text-muted-foreground" />
+                </div>
+            )}
+        </>
     );
 }

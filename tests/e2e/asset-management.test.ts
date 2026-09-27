@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import fs from 'fs';
+import path from 'path';
 
 // Minimal 1×1 transparent PNG — valid image bytes the server will accept
 const PNG_BYTES = Buffer.from([
@@ -164,5 +166,33 @@ test.describe('CUJ 4: Asset Management — Upload, View, Reject', () => {
 
         // The disallowed file must NOT appear in the gallery
         await expect(page.getByText('malicious.sh')).not.toBeVisible();
+    });
+});
+
+test.describe('Bulk upload dialog', () => {
+    test('shows a painted thumbnail for images and an icon for other files', async ({ page }) => {
+        await page.goto('/assets');
+        await page.getByRole('button', { name: 'Upload' }).click();
+        const dialog = page.getByRole('dialog');
+        await dialog.locator('input[type="file"]').setInputFiles([
+            { name: 'gps-london.jpg', mimeType: 'image/jpeg', buffer: fs.readFileSync(path.resolve('./tests/e2e/fixtures/gps-london.jpg')) },
+            { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('plain notes') },
+        ]);
+
+        const thumb = dialog.getByRole('img', { name: 'gps-london.jpg' });
+        await expect(thumb).toBeVisible();
+        // Painted, not just present: an <img> has decoded pixels, a <canvas> has
+        // non-transparent pixels at its centre.
+        await expect.poll(() => thumb.evaluate((el) => {
+            if (el instanceof HTMLImageElement) return el.complete && el.naturalWidth > 0;
+            if (el instanceof HTMLCanvasElement) {
+                const ctx = el.getContext('2d');
+                return !!ctx && ctx.getImageData(el.width / 2, el.height / 2, 1, 1).data[3] > 0;
+            }
+            return false;
+        })).toBe(true);
+
+        await expect(dialog.getByText('notes.txt')).toBeVisible();
+        await expect(dialog.getByRole('img', { name: 'notes.txt' })).toHaveCount(0);
     });
 });

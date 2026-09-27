@@ -312,6 +312,19 @@ function MentionHoverCard({
   );
 }
 
+/** Stamps cached display names onto rendered mention chips (see the name-cache effect). */
+function patchChipLabels(container: HTMLElement | null, names: Map<string, string>) {
+  if (!container) return;
+  container
+    .querySelectorAll<HTMLElement>("[data-mention-id]")
+    .forEach((el) => {
+      const id = el.getAttribute("data-mention-id");
+      if (!id) return;
+      const name = names.get(id);
+      if (name) el.setAttribute("data-mention-label", name);
+    });
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function MilkdownEditor({
@@ -325,12 +338,15 @@ export function MilkdownEditor({
 }: MilkdownEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const crepeRef = useRef<Crepe | null>(null);
+  // Latest props for editor callbacks that outlive the render they came from
   const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
   const onImageUploadRef = useRef(onImageUpload);
-  onImageUploadRef.current = onImageUpload;
   const contentRef = useRef(content);
-  contentRef.current = content;
+  useEffect(() => {
+    onChangeRef.current = onChange;
+    onImageUploadRef.current = onImageUpload;
+    contentRef.current = content;
+  }, [onChange, onImageUpload, content]);
   const suppressChangeRef = useRef(false);
   const pendingReadonlyRestoreRef = useRef(false);
   const contentAppliedRef = useRef(false);
@@ -356,8 +372,8 @@ export function MilkdownEditor({
     to: 0,
     rect: null,
   });
+  // State setters are stable, so this never needs updating
   const setMentionUIRef = useRef(setMentionUI);
-  setMentionUIRef.current = setMentionUI;
   const mentionListRef = useRef<MentionListHandle | null>(null);
   const mentionSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [mentionItems, setMentionItems] = useState<SlimPersonSummary[]>([]);
@@ -371,14 +387,6 @@ export function MilkdownEditor({
   // Ref used by the ProseMirror mention plugin to forward Arrow/Enter/Escape
   // key events to the MentionList before ProseMirror handles them.
   const mentionKeyDownRef = useRef<(key: string) => boolean>(() => false);
-
-  // Create plugins once (stable across renders)
-  const imageDropPlugin = useRef(makeImageDropPlugin(onImageUploadRef)).current;
-  const mentionBackspacePlugin = useRef(makeMentionBackspacePlugin()).current;
-  const mentionPlugin = useRef(
-    enableMentions ? makeMentionPlugin(setMentionUIRef, mentionKeyDownRef) : null,
-  ).current;
-  const decorPlugin = useRef(makeMentionDecorPlugin(nameCacheRef)).current;
 
   // ── Apply content safely (works in both readonly and editable modes) ─────────
 
@@ -435,8 +443,9 @@ export function MilkdownEditor({
     // Add ProseMirror plugins — imageDropPlugin goes FIRST so its handleDrop
     // and handlePaste win priority over all other handlers (including Milkdown's
     // default base64-uploader). Decoration/mention plugins go after built-ins.
-    const afterPlugins: Plugin[] = [mentionBackspacePlugin, decorPlugin];
-    if (mentionPlugin) afterPlugins.push(mentionPlugin);
+    const imageDropPlugin = makeImageDropPlugin(onImageUploadRef);
+    const afterPlugins: Plugin[] = [makeMentionBackspacePlugin(), makeMentionDecorPlugin(nameCacheRef)];
+    if (enableMentions) afterPlugins.push(makeMentionPlugin(setMentionUIRef, mentionKeyDownRef));
 
     crepe.editor.config((ctx) => {
       ctx.update(prosePluginsCtx, (prev) => [imageDropPlugin, ...prev, ...afterPlugins]);
@@ -472,7 +481,7 @@ export function MilkdownEditor({
 
       // If names were cached before Crepe was ready (fast-fetch path), patch chips now
       if (nameCacheRef.current.size > 0) {
-        patchChipLabels();
+        patchChipLabels(containerRef.current, nameCacheRef.current);
       }
     });
 
@@ -573,22 +582,10 @@ export function MilkdownEditor({
   //   B) Fetches resolve BEFORE Crepe is ready → patchChipLabels() called from
   //      crepe.create().then() once chips are in the DOM
 
-  const patchChipLabels = useCallback(() => {
-    if (!containerRef.current) return;
-    containerRef.current
-      .querySelectorAll<HTMLElement>("[data-mention-id]")
-      .forEach((el) => {
-        const id = el.getAttribute("data-mention-id");
-        if (!id) return;
-        const name = nameCacheRef.current.get(id);
-        if (name) el.setAttribute("data-mention-label", name);
-      });
-  }, []);
-
   useEffect(() => {
     if (nameCacheVersion === 0) return;
-    patchChipLabels();
-  }, [nameCacheVersion, patchChipLabels]);
+    patchChipLabels(containerRef.current, nameCacheRef.current);
+  }, [nameCacheVersion]);
 
   // ── Insert mention ────────────────────────────────────────────────────────
 
