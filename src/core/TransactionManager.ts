@@ -43,9 +43,8 @@ export class TransactionManager {
     async writeFile(relativePath: string, content: string, label: string): Promise<void> {
         // Checked absolute path for the file system (throws if it escapes rootDir)
         const targetPath = resolveWithinRoot(this.rootDir, relativePath);
-        // GraphEngine matches self-writes against watcher event paths, so keep reporting
-        // the rootDir-joined form: switching it to targetPath changes which app writes
-        // the watcher treats as external.
+        // Reported to GraphEngine as a self-write; it canonicalizes the path to match
+        // the watcher's event paths.
         const selfWriteKey = path.join(this.rootDir, relativePath);
         await this.writeMutex.runExclusive(async () => {
             // Ensure parent directory exists

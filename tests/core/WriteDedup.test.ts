@@ -63,6 +63,20 @@ describe('Write-Event Deduplication (Phase 3.7.3)', () => {
             expect(engine.consumeSelfWrite(filePath)).toBe(false);
         });
 
+        it('should match a self-write registered through a symlinked or relative path', () => {
+            // The watcher reports canonical paths; the app registers rootDir-joined ones
+            // (relative DATA_DIR, macOS /var → /private/var). Both must hit the same entry.
+            const linkDir = path.join(DATA_DIR, 'link');
+            fs.symlinkSync(PEOPLE_DIR, linkDir);
+            const realPath = path.join(fs.realpathSync(PEOPLE_DIR), 'N_A.yaml');
+
+            engine.registerSelfWrite(path.join(linkDir, 'N_A.yaml'));
+            expect(engine.consumeSelfWrite(realPath)).toBe(true);
+
+            engine.registerSelfWrite(path.relative(process.cwd(), path.join(PEOPLE_DIR, 'N_B.yaml')));
+            expect(engine.hasSelfWrite(path.join(fs.realpathSync(PEOPLE_DIR), 'N_B.yaml'))).toBe(true);
+        });
+
         it('should return false for unregistered (external) file paths', () => {
             const filePath = path.join(PEOPLE_DIR, 'N_EXTERNAL.yaml');
 
