@@ -7,6 +7,8 @@ const GPS_JPG_PATH = path.resolve('./tests/e2e/fixtures/gps-london.jpg');
 // Use a run-specific suffix to avoid filename dedup collisions across runs.
 const RUN_ID = Date.now();
 const GPS_IMAGE_FILENAME = `gps-london-${RUN_ID}.jpg`;
+// AssetsPage shows the filename minus extension with - and _ as spaces
+const GPS_IMAGE_DISPLAY_NAME = `gps london ${RUN_ID}`;
 
 test.describe('CUJ 5: Geocoding — Place Search & Reverse Geocoding', () => {
     let personId: string;
@@ -47,8 +49,10 @@ test.describe('CUJ 5: Geocoding — Place Search & Reverse Geocoding', () => {
     });
 
     test.afterAll(async ({ request }) => {
+        // permanent=true deletes the file too; a bare unlink leaves a geotagged
+        // asset behind that a rerun against the same data dir would also find.
         for (const filename of uploadedAssets) {
-            await request.delete(`http://localhost:3000/api/people/${personId}/media/${filename}`);
+            await request.delete(`http://localhost:3000/api/people/${personId}/media/${filename}?permanent=true`);
         }
         if (personId) await request.delete(`http://localhost:3000/api/people/${personId}`);
     });
@@ -130,7 +134,13 @@ test.describe('CUJ 5: Geocoding — Place Search & Reverse Geocoding', () => {
         // With the London coordinates (51.5074°N, 0.1278°W), the GeoNames DB should
         // resolve to a place name containing "London" (e.g. "London", "City of London").
         // The location text appears in the asset card info panel.
-        const assetCard = page.locator('div').filter({ hasText: /gps.london/i }).first();
+        // Scope to this run's card: every ancestor of the card also contains its
+        // image and title, and .last() picks the innermost (the card itself).
+        // Other London-geotagged assets on the page must not satisfy the check.
+        const assetCard = page.locator('div')
+            .filter({ has: page.getByRole('img', { name: GPS_IMAGE_DISPLAY_NAME, exact: true }) })
+            .filter({ has: page.locator(`p[title="${GPS_IMAGE_DISPLAY_NAME}"]`) })
+            .last();
         await expect(assetCard).toBeVisible({ timeout: 10_000 });
 
         // Check that reverse-geocoded location metadata is displayed.
