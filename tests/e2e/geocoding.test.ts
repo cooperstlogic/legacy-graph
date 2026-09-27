@@ -130,6 +130,11 @@ test.describe('CUJ 5: Geocoding — Place Search & Reverse Geocoding', () => {
         // Navigate to global assets page to check metadata (location is shown there)
         await page.goto('/assets');
 
+        // The grid is virtualized and sorted by name, so with older gps-london-*
+        // assets in the data dir this run's card may sort past the rendered rows.
+        // Searching the unique filename leaves only this card in the grid.
+        await page.getByPlaceholder('Search or @mention…').fill(GPS_IMAGE_FILENAME);
+
         // The asset card for our uploaded image should show a reverse-geocoded location.
         // With the London coordinates (51.5074°N, 0.1278°W), the GeoNames DB should
         // resolve to a place name containing "London" (e.g. "London", "City of London").
