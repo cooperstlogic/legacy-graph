@@ -306,24 +306,54 @@ export function BulkUploadDialog({ open, onOpenChange, onSuccess }: BulkUploadDi
     );
 }
 
-/** Image files get an object-URL preview, owned by this row: created on mount, revoked on unmount. */
+const THUMB_CSS_PX = 40;
+
+/**
+ * Image files are decoded with createImageBitmap and painted onto a canvas
+ * (centre-cropped square), so no URL for the user's file is ever created or
+ * rendered. Formats the browser can't decode fall back to the file icon.
+ */
 function FileThumbnail({ file }: { file: File }) {
     const isImage = file.type.startsWith('image/');
-    const [url, setUrl] = useState<string | null>(null);
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const [drawn, setDrawn] = useState(false);
 
     useEffect(() => {
+        setDrawn(false);
         if (!isImage) return;
-        const objectUrl = URL.createObjectURL(file);
-        setUrl(objectUrl);
-        return () => URL.revokeObjectURL(objectUrl);
+        let cancelled = false;
+        createImageBitmap(file)
+            .then((bitmap) => {
+                const canvas = canvasRef.current;
+                const ctx = canvas?.getContext('2d');
+                if (cancelled || !canvas || !ctx) { bitmap.close(); return; }
+                const size = Math.round(THUMB_CSS_PX * window.devicePixelRatio);
+                canvas.width = size;
+                canvas.height = size;
+                const side = Math.min(bitmap.width, bitmap.height);
+                ctx.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, size, size);
+                bitmap.close();
+                setDrawn(true);
+            })
+            .catch(() => { /* undecodable image: keep the icon */ });
+        return () => { cancelled = true; };
     }, [file, isImage]);
 
-    if (isImage && url) {
-        return <img src={url} alt={file.name} className="h-10 w-10 rounded object-cover shrink-0" />;
-    }
     return (
-        <div className="h-10 w-10 rounded bg-muted flex items-center justify-center shrink-0">
-            <FileText className="h-5 w-5 text-muted-foreground" />
-        </div>
+        <>
+            {isImage && (
+                <canvas
+                    ref={canvasRef}
+                    role="img"
+                    aria-label={file.name}
+                    className={`h-10 w-10 rounded shrink-0 ${drawn ? '' : 'hidden'}`}
+                />
+            )}
+            {!drawn && (
+                <div className="h-10 w-10 rounded bg-muted flex items-center justify-center shrink-0">
+                    <FileText className="h-5 w-5 text-muted-foreground" />
+                </div>
+            )}
+        </>
     );
 }
