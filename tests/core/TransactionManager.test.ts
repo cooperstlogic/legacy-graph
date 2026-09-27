@@ -121,6 +121,102 @@ describe('TransactionManager', () => {
         expect(source).toContain('isomorphic-git');
     });
 
+    describe('batches where a file changes state more than once', () => {
+        const headFiles = async () => {
+            const oid = await git.resolveRef({ fs: nodeFs, dir: REPO_DIR, ref: 'HEAD' });
+            return git.listFiles({ fs: nodeFs, dir: REPO_DIR, ref: oid });
+        };
+        const commitCount = async () => {
+            try {
+                return (await git.log({ fs: nodeFs, dir: REPO_DIR })).length;
+            } catch {
+                return 0; // No commits yet
+            }
+        };
+
+        it('commits the rest of a batch when a new file is written then deleted before the commit', async () => {
+            await txManager.writeFile('people/gone.yaml', 'name: Gone', 'Gone');
+            fs.rmSync(path.join(REPO_DIR, 'people/gone.yaml'));
+            await txManager.removeFile('people/gone.yaml', 'Gone');
+            await txManager.writeFile('people/kept.yaml', 'name: Kept', 'Kept');
+
+            await txManager.flush();
+
+            expect(txManager.hasPending()).toBe(false);
+            expect(await headFiles()).toEqual(['people/kept.yaml']);
+        });
+
+        it('keeps committing later batches after a write-then-delete batch', async () => {
+            // An uploaded asset deleted before its commit: tracked, then removed from disk
+            fs.mkdirSync(path.join(REPO_DIR, 'assets'), { recursive: true });
+            fs.writeFileSync(path.join(REPO_DIR, 'assets/photo.jpg'), 'jpg');
+            await txManager.trackFile('assets/photo.jpg', 'asset photo.jpg');
+            fs.rmSync(path.join(REPO_DIR, 'assets/photo.jpg'));
+            await txManager.removeFile('assets/photo.jpg', 'asset photo.jpg');
+            await txManager.flush();
+
+            await txManager.writeFile('people/later.yaml', 'name: Later', 'Later');
+            await txManager.flush();
+
+            expect(txManager.hasPending()).toBe(false);
+            expect(await commitCount()).toBe(1);
+            expect(await headFiles()).toEqual(['people/later.yaml']);
+        });
+
+        it('commits a file written then deleted without a removeFile call as absent', async () => {
+            await txManager.writeFile('people/base.yaml', 'name: Base', 'Base');
+            await txManager.writeFile('people/vanished.yaml', 'name: Vanished', 'Vanished');
+            fs.rmSync(path.join(REPO_DIR, 'people/vanished.yaml'));
+
+            await txManager.flush();
+
+            expect(txManager.hasPending()).toBe(false);
+            expect(await headFiles()).toEqual(['people/base.yaml']);
+        });
+
+        it('removes a committed file that is rewritten then deleted within one batch', async () => {
+            await txManager.writeFile('people/keep.yaml', 'name: Keep', 'Keep');
+            await txManager.writeFile('people/old.yaml', 'name: Old', 'Old');
+            await txManager.flush();
+
+            await txManager.writeFile('people/old.yaml', 'name: Old v2', 'Old');
+            fs.rmSync(path.join(REPO_DIR, 'people/old.yaml'));
+            await txManager.removeFile('people/old.yaml', 'Old');
+            await txManager.flush();
+
+            expect(txManager.hasPending()).toBe(false);
+            expect(await commitCount()).toBe(2);
+            expect(await headFiles()).toEqual(['people/keep.yaml']);
+        });
+
+        it('commits the final content of a file deleted then recreated within one batch', async () => {
+            await txManager.writeFile('people/back.yaml', 'name: Back', 'Back');
+            await txManager.flush();
+
+            fs.rmSync(path.join(REPO_DIR, 'people/back.yaml'));
+            await txManager.removeFile('people/back.yaml', 'Back');
+            await txManager.writeFile('people/back.yaml', 'name: Back again', 'Back');
+            await txManager.flush();
+
+            const oid = await git.resolveRef({ fs: nodeFs, dir: REPO_DIR, ref: 'HEAD' });
+            const { blob } = await git.readBlob({ fs: nodeFs, dir: REPO_DIR, oid, filepath: 'people/back.yaml' });
+            expect(Buffer.from(blob).toString('utf8')).toBe('name: Back again');
+        });
+
+        it('does not create an empty commit when a batch nets out to no change', async () => {
+            await txManager.writeFile('people/base.yaml', 'name: Base', 'Base');
+            await txManager.flush();
+
+            await txManager.writeFile('people/temp.yaml', 'name: Temp', 'Temp');
+            fs.rmSync(path.join(REPO_DIR, 'people/temp.yaml'));
+            await txManager.removeFile('people/temp.yaml', 'Temp');
+            await txManager.flush();
+
+            expect(txManager.hasPending()).toBe(false);
+            expect(await commitCount()).toBe(1);
+        });
+    });
+
     describe('paths outside the root', () => {
         const outside = path.join(REPO_DIR, '..', 'tx-escape.txt');
 
