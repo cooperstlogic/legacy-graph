@@ -409,6 +409,34 @@ describe('Assets API', () => {
         expect(personRes.body.assets).not.toContain(TEST_ASSET);
     });
 
+    it('DELETE /api/assets/:filename?force=true removes the asset from stories in the graph', async () => {
+        writeTestAsset();
+
+        const storyRes = await request.post('/api/stories').send({
+            title: 'Forcedelete Storyasset',
+            content: 'A story with a photo.',
+            assets: [TEST_ASSET],
+        });
+        expect(storyRes.status).toBe(201);
+        const storyId = storyRes.body.id;
+
+        try {
+            const before = await request.get('/api/search').query({ q: 'Forcedelete' });
+            expect(before.body.stories.find((s: { id: string }) => s.id === storyId)?.firstAsset).toBe(TEST_ASSET);
+
+            const res = await request.delete(`/api/assets/${TEST_ASSET}?force=true`);
+            expect(res.status).toBe(204);
+
+            // Search reads story metadata from the in-memory graph, not the file
+            const after = await request.get('/api/search').query({ q: 'Forcedelete' });
+            const story = after.body.stories.find((s: { id: string }) => s.id === storyId);
+            expect(story).toBeDefined();
+            expect(story.firstAsset).toBeUndefined();
+        } finally {
+            await request.delete(`/api/stories/${storyId}`);
+        }
+    });
+
     it('DELETE /api/assets/:filename?force=true still returns 404 for missing file', async () => {
         const res = await request.delete('/api/assets/does-not-exist.png?force=true');
         expect(res.status).toBe(404);

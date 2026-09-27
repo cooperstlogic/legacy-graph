@@ -12,6 +12,7 @@ import { GraphCache, GraphCacheFile } from './GraphCache';
 import { HydrationWorkerResult, HydrationWorkerError, HydrationWorkerProgress } from './HydrationWorker';
 import { EventEmitter } from 'events';
 import * as fs from 'fs/promises';
+import { realpathSync } from 'fs';
 import { loadYaml, dumpYaml } from './yaml';
 import { PersonSchema, SlimPerson, toSlimPerson, PersonEntry } from '../schemas/PersonSchema';
 import { StorySchema } from '../schemas/StorySchema';
@@ -64,9 +65,10 @@ export class GraphEngine extends EventEmitter {
         return this._cacheWrittenAt;
     }
 
-    private fileMap: Map<string, string> = new Map(); // FilePath -> PersonID
+    private fileMap: Map<string, string> = new Map(); // Canonical FilePath -> PersonID
     private reverseFileMap: Map<string, string> = new Map(); // PersonID -> FilePath
-    private selfWriteMap: Map<string, number> = new Map(); // AbsolutePath -> expiry timestamp
+    private selfWriteMap: Map<string, number> = new Map(); // Canonical path -> expiry timestamp
+    private canonicalDirCache: Map<string, string> = new Map(); // Directory as given -> realpath
 
     private watcherEventCount = 0;
     private watcherWindowStart = 0;
@@ -74,22 +76,45 @@ export class GraphEngine extends EventEmitter {
     private watcherSuspendedUntil = 0; // grace period after suspension ends
 
     /**
+     * Canonical form of a file path, used to key self-writes and fileMap. The watcher
+     * reports real paths, while writers and hydration join paths onto the configured
+     * data dir, which may be relative (DATA_DIR=./data) or pass through a symlink
+     * (macOS /var → /private/var). The parent directory is resolved rather than the
+     * file so deleted files still map.
+     */
+    private canonicalPath(filePath: string): string {
+        const dir = path.dirname(filePath);
+        let canonicalDir = this.canonicalDirCache.get(dir);
+        if (canonicalDir === undefined) {
+            try {
+                canonicalDir = realpathSync(dir);
+                this.canonicalDirCache.set(dir, canonicalDir);
+            } catch {
+                // Directory doesn't exist (yet): don't cache the fallback
+                canonicalDir = path.resolve(dir);
+            }
+        }
+        return path.join(canonicalDir, path.basename(filePath));
+    }
+
+    /**
      * Register a file path as written by the application itself.
      * The watcher will skip hot-patching for this file on the next event.
      * Entries expire after ttlMs (default 10000ms) to prevent memory leaks.
      */
     public registerSelfWrite(absolutePath: string, ttlMs: number = 10000): void {
-        this.selfWriteMap.set(absolutePath, Date.now() + ttlMs);
+        this.selfWriteMap.set(this.canonicalPath(absolutePath), Date.now() + ttlMs);
     }
 
     /**
      * Check if a file path is in the self-write set (not expired).
      */
     public hasSelfWrite(absolutePath: string): boolean {
-        const expiry = this.selfWriteMap.get(absolutePath);
+        const key = this.canonicalPath(absolutePath);
+        const expiry = this.selfWriteMap.get(key);
         if (expiry === undefined) return false;
         if (Date.now() > expiry) {
-            this.selfWriteMap.delete(absolutePath);
+            this.selfWriteMap.delete(key);
             return false;
         }
         return true;
@@ -100,14 +125,27 @@ export class GraphEngine extends EventEmitter {
      * Returns true if the entry was consumed, false if not found or expired.
      */
     public consumeSelfWrite(absolutePath: string): boolean {
-        const expiry = this.selfWriteMap.get(absolutePath);
+        const key = this.canonicalPath(absolutePath);
+        const expiry = this.selfWriteMap.get(key);
         if (expiry === undefined) return false;
-        if (Date.now() > expiry) {
-            this.selfWriteMap.delete(absolutePath);
-            return false;
+        this.selfWriteMap.delete(key);
+        return Date.now() <= expiry;
+    }
+
+    /**
+     * Record the source YAML for a person the API just wrote. The watcher skips
+     * self-writes, so without this a person created via the API has no file mapping
+     * and loadHeavyFields() can't find its scrapbook_md or _gedcom.
+     */
+    public registerPersonFile(personId: string, filePath: string): void {
+        const key = this.canonicalPath(filePath);
+        const previous = this.reverseFileMap.get(personId);
+        if (previous !== undefined) {
+            const previousKey = this.canonicalPath(previous);
+            if (previousKey !== key) this.fileMap.delete(previousKey);
         }
-        this.selfWriteMap.delete(absolutePath);
-        return true;
+        this.fileMap.set(key, personId);
+        this.reverseFileMap.set(personId, filePath);
     }
 
     /**
@@ -347,7 +385,7 @@ export class GraphEngine extends EventEmitter {
         const slimPeople: SlimPerson[] = [];
         peopleWithMtime.forEach(({ data: slim, bio, filePath, wasParsed }) => {
             this.graph.addNode(slim.id, { type: 'person', data: slim });
-            this.fileMap.set(filePath, slim.id);
+            this.fileMap.set(this.canonicalPath(filePath), slim.id);
             this.reverseFileMap.set(slim.id, filePath);
             slimPeople.push(slim);
 
@@ -741,7 +779,7 @@ export class GraphEngine extends EventEmitter {
             const slim = toSlimPerson(newPerson);
 
             // Handle ID changes (rare): treat as remove old + add new
-            const existingId = this.fileMap.get(filePath);
+            const existingId = this.fileMap.get(this.canonicalPath(filePath));
             if (existingId && existingId !== newPerson.id) {
                 this.removeNode(existingId);
             }
@@ -758,7 +796,7 @@ export class GraphEngine extends EventEmitter {
             } else {
                 this.graph.addNode(newPerson.id, { type: 'person', data: slim });
             }
-            this.fileMap.set(filePath, newPerson.id);
+            this.fileMap.set(this.canonicalPath(filePath), newPerson.id);
             this.reverseFileMap.set(newPerson.id, filePath);
 
             this.applyWriteSideEffects(newPerson.id, oldData, slim, newPerson.scrapbook_md || '');
@@ -862,10 +900,11 @@ export class GraphEngine extends EventEmitter {
             return;
         }
 
-        const id = this.fileMap.get(filePath);
+        const key = this.canonicalPath(filePath);
+        const id = this.fileMap.get(key);
         if (id) {
             this.removeNode(id);
-            this.fileMap.delete(filePath);
+            this.fileMap.delete(key);
             this.reverseFileMap.delete(id);
             console.log(`[GraphEngine] Hot-removed ${id}`);
         }

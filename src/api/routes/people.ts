@@ -207,6 +207,7 @@ export async function peopleRoutes(server: FastifyInstance) {
             const graph = graphEngine.getGraph();
             const slim = toSlimPerson(newPerson);
             graph.addNode(newPerson.id, { type: 'person', data: slim });
+            graphEngine.registerPersonFile(newPerson.id, path.join(dataDir, relativePath));
 
             graphEngine.applyWriteSideEffects(newPerson.id, null, slim, newPerson.scrapbook_md || '');
 

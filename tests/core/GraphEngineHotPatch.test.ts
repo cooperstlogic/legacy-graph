@@ -152,6 +152,52 @@ describe('GraphEngine Hot-Patching', () => {
     });
 });
 
+describe('Hot-removal with a relative data dir', () => {
+    // .env uses DATA_DIR=./data, while the watcher reports absolute real paths.
+    const relativeRoot = path.relative(process.cwd(), TEMP_DIR);
+    let engine: GraphEngine;
+
+    beforeEach(async () => {
+        await fs.mkdir(PEOPLE_DIR, { recursive: true });
+        await fs.mkdir(STORIES_DIR, { recursive: true });
+    });
+
+    afterEach(async () => {
+        await engine.close();
+        await fs.rm(TEMP_DIR, { recursive: true, force: true });
+    });
+
+    async function watcherPath(filename: string): Promise<string> {
+        return path.join(await fs.realpath(PEOPLE_DIR), filename);
+    }
+
+    it('removes a boot-loaded person when the watcher reports its absolute path', async () => {
+        await writePerson('N_BOOT.yaml', 'N_BOOT', 'Boot');
+        engine = new GraphEngine(relativeRoot);
+        await engine.hydrate();
+        expect(engine.getGraph().hasNode('N_BOOT')).toBe(true);
+
+        await fs.unlink(path.join(PEOPLE_DIR, 'N_BOOT.yaml'));
+        (engine as any).handleFileRemove(await watcherPath('N_BOOT.yaml'));
+
+        expect(engine.getGraph().hasNode('N_BOOT')).toBe(false);
+    });
+
+    it('removes an API-registered person when the watcher reports its absolute path', async () => {
+        engine = new GraphEngine(relativeRoot);
+        await engine.hydrate();
+
+        await writePerson('N_API.yaml', 'N_API', 'Api');
+        engine.getGraph().addNode('N_API', { type: 'person', data: { id: 'N_API' } });
+        engine.registerPersonFile('N_API', path.join(relativeRoot, 'people', 'N_API.yaml'));
+
+        await fs.unlink(path.join(PEOPLE_DIR, 'N_API.yaml'));
+        (engine as any).handleFileRemove(await watcherPath('N_API.yaml'));
+
+        expect(engine.getGraph().hasNode('N_API')).toBe(false);
+    });
+});
+
 describe('Diff-Based Edge Reconciliation', () => {
     let engine: GraphEngine;
 
